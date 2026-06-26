@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { listTickets, updateTicket } from "@/lib/cunav-api";
-import type { Ticket, Status, TicketType, Priority } from "@/lib/types";
+import { listTickets, listQueues, updateTicket, filterCunavTickets } from "@/lib/cunav-api";
+import type { Ticket, Queue, Status, TicketType, Priority } from "@/lib/types";
 import PriorityBadge from "@/components/PriorityBadge";
 import TicketTypeBadge from "@/components/TicketTypeBadge";
 
@@ -38,8 +38,11 @@ export default function TriagePage() {
     if (!token) return;
     setLoading(true); setError(null);
     try {
-      const all = await listTickets(token);
-      setTickets(all);
+      const [all, queues] = await Promise.all([
+        listTickets(token),
+        listQueues(token).catch(() => [] as Queue[]),
+      ]);
+      setTickets(filterCunavTickets(all, queues));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load tickets");
     } finally {

@@ -1,7 +1,7 @@
 // Cunav-specific API calls — ticket CRUD wrapping workflow endpoints,
 // plus queue (job) management.
 
-import type { Ticket, Queue, TicketType, Priority } from "./types";
+import type { Ticket, Queue, Job, TicketType, Priority } from "./types";
 
 const BASE =
   typeof window === "undefined"
@@ -28,6 +28,15 @@ async function apiRequest<T>(path: string, token: string, init?: RequestInit): P
 }
 
 // ── Tickets (workflows with cunav fields) ──────────────────────────────────────
+
+/** Keep only workflows that are cunav tickets — those with ticket_type set,
+ *  or whose job_id belongs to a cunav queue. */
+export function filterCunavTickets(tickets: Ticket[], queues: Queue[]): Ticket[] {
+  const queueIds = new Set(queues.map((q) => q.id));
+  return tickets.filter(
+    (t) => t.ticket_type != null || (t.job_id != null && queueIds.has(t.job_id)),
+  );
+}
 
 export const listTickets = (
   token: string,
@@ -75,11 +84,11 @@ export const deleteTicket = (token: string, id: string): Promise<void> =>
 
 // ── Queues (jobs with job_type = "queue") ─────────────────────────────────────
 
-export const listQueues = (token: string, params?: { team_id?: string }): Promise<Queue[]> => {
+export const listQueues = async (token: string, params?: { team_id?: string }): Promise<Queue[]> => {
   const qs = new URLSearchParams();
-  qs.set("job_type", "queue");
   if (params?.team_id) qs.set("team_id", params.team_id);
-  return apiRequest(`/jobs?${qs}`, token);
+  const jobs = await apiRequest<Job[]>(`/jobs?${qs}`, token);
+  return jobs.filter((j): j is Queue => j.job_type === "queue");
 };
 
 export const createQueue = (

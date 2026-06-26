@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/contexts/AuthContext";
 import { listQueues, createQueue, updateQueue, deleteQueue } from "@/lib/cunav-api";
-import { getTeamClaims } from "@/lib/auth-api";
+import { getAweTeamIds } from "@/lib/auth-api";
 import type { Queue } from "@/lib/types";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
@@ -83,7 +83,7 @@ export default function QueuesPage() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
 
-  const teamIds = Object.keys(getTeamClaims(token ?? null));
+  const teamIds = getAweTeamIds(token ?? null);
 
   const load = useCallback(async () => {
     if (!token) return;

@@ -32,7 +32,7 @@ function formatDate(iso: string): string {
 }
 
 type MainTab = "details" | "triage";
-type ExplorerTab = "wikipedia" | "ai";
+type ExplorerTab = "notes" | "ai" | "wikipedia";
 
 export default function TicketDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -54,7 +54,7 @@ export default function TicketDetailPage() {
   const [descDraft, setDescDraft] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [mainTab, setMainTab] = useState<MainTab>("details");
-  const [explorerTab, setExplorerTab] = useState<ExplorerTab>("wikipedia");
+  const [explorerTab, setExplorerTab] = useState<ExplorerTab>("notes");
   const [showSendToTogra, setShowSendToTogra] = useState(false);
   const [tograSentInfo, setTograSentInfo] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -318,8 +318,8 @@ export default function TicketDetailPage() {
             <div className="border-b border-slate-200 px-4 py-3 shrink-0">
               <h2 className="text-sm font-semibold text-slate-700">{t("notesTitle")}</h2>
             </div>
-            <div className="flex-1 overflow-y-auto px-4 py-3">
-              <NotesPanel entityType="workflow" entityId={ticket.id} isTeam />
+            <div className="flex-1 overflow-hidden min-h-0 px-4 py-3">
+              <NotesPanel entityType="workflow" entityId={ticket.id} isTeam folderOrientation="vertical" />
             </div>
           </div>
         </div>
@@ -408,26 +408,35 @@ export default function TicketDetailPage() {
           {/* Right: explorer tabs */}
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-slate-50">
             <div className="border-b border-slate-200 bg-white flex px-4 gap-0 shrink-0">
-              {(["wikipedia", "ai"] as ExplorerTab[]).map((tab) => (
+              {([
+                { id: "notes", label: "Notes" },
+                { id: "ai", label: "AI Assistant" },
+                { id: "wikipedia", label: "Wikipedia" },
+              ] as { id: ExplorerTab; label: string }[]).map(({ id, label }) => (
                 <button
-                  key={tab}
-                  onClick={() => setExplorerTab(tab)}
+                  key={id}
+                  onClick={() => setExplorerTab(id)}
                   className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                    explorerTab === tab
+                    explorerTab === id
                       ? "border-violet-600 text-violet-700"
                       : "border-transparent text-slate-500 hover:text-slate-700"
                   }`}
                 >
-                  {tab === "wikipedia" ? "Wikipedia" : "AI Assistant"}
+                  {label}
                 </button>
               ))}
             </div>
-            <div className="flex-1 overflow-hidden p-4">
-              {explorerTab === "wikipedia" && (
-                <WikipediaExplorer initialQuery={ticket.name} onSaveAsNote={handleSaveAsNote} />
+            <div className="flex-1 overflow-hidden p-4 flex flex-col min-h-0">
+              {explorerTab === "notes" && (
+                <div className="flex-1 min-h-0">
+                  <NotesPanel entityType="workflow" entityId={ticket.id} isTeam twoColumn />
+                </div>
               )}
               {explorerTab === "ai" && (
                 <AiChatExplorer ticket={ticket} />
+              )}
+              {explorerTab === "wikipedia" && (
+                <WikipediaExplorer onSaveAsNote={handleSaveAsNote} />
               )}
             </div>
           </div>
