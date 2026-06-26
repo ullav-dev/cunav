@@ -86,9 +86,10 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
 
   // Load templates when project changes (scoped to project's team)
   useEffect(() => {
+    setTemplates([]); setSelectedTemplate(null); setNoTemplate(false);
     const project = projects.find((p) => p.id === selectedProject);
     const teamId = project?.team_id;
-    if (!teamId || !token) { setTemplates([]); setSelectedTemplate(null); return; }
+    if (!teamId || !token) { return; }
     setLoadingTemplates(true);
     fetch(`/api/workflows?team_id=${teamId}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
