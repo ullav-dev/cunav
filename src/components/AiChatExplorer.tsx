@@ -119,12 +119,11 @@ export default function AiChatExplorer({ ticket }: Props) {
                 ? m.parts?.map((part, i) =>
                     part.type === "text" ? <span key={i}>{part.text}</span> : null
                   )
-                : <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    className="prose prose-sm prose-slate max-w-none prose-p:my-1 prose-headings:mb-1 prose-headings:mt-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1 prose-code:text-violet-700 prose-code:bg-violet-50 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none"
-                  >
-                    {m.parts?.filter((p) => p.type === "text").map((p) => (p as { type: "text"; text: string }).text).join("") ?? ""}
-                  </ReactMarkdown>
+                : <div className="prose prose-sm prose-slate max-w-none prose-p:my-1 prose-headings:mb-1 prose-headings:mt-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1 prose-code:text-violet-700 prose-code:bg-violet-50 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {m.parts?.filter((p) => p.type === "text").map((p) => (p as { type: "text"; text: string }).text).join("") ?? ""}
+                    </ReactMarkdown>
+                  </div>
               }
             </div>
           </div>
