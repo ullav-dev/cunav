@@ -32,7 +32,7 @@ function summaryUrl(lang: string, key: string) {
 }
 
 interface Props {
-  onSaveAsNote?: (title: string, body: string) => Promise<void>;
+  onSaveAsNote?: (title: string, body: string, isShared?: boolean) => Promise<void>;
   initialQuery?: string;
 }
 

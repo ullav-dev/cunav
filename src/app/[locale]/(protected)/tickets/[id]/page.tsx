@@ -111,9 +111,9 @@ export default function TicketDetailPage() {
     router.push("/tickets");
   }
 
-  async function handleSaveAsNote(title: string, body: string) {
+  async function handleSaveAsNote(title: string, body: string, isShared = false) {
     if (!token || !ticket) return;
-    await createNote(token, { entity_type: "workflow", entity_id: ticket.id, title, body: body || undefined, is_shared: false });
+    await createNote(token, { entity_type: "workflow", entity_id: ticket.id, title, body: body || undefined, is_shared: isShared });
   }
 
   async function handleTograSent(workflowId: string, project: string, job: string) {
