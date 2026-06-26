@@ -41,6 +41,7 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null); // null = None
   const [noTemplate, setNoTemplate] = useState(false);
   const [templateSearch, setTemplateSearch] = useState("");
+  const [templateOpen, setTemplateOpen] = useState(false);
 
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingJobs, setLoadingJobs] = useState(false);
@@ -248,40 +249,37 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
                     <p className="text-xs text-slate-400 italic">No templates defined for this project's team — workflow will be created blank.</p>
                   ) : (
                     <>
-                      {/* Search */}
-                      <input
-                        value={templateSearch}
-                        onChange={(e) => setTemplateSearch(e.target.value)}
-                        placeholder="Search templates…"
-                        disabled={noTemplate}
-                        className="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm mb-2 focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-40"
-                      />
-
-                      {/* Template list */}
-                      <div className={`rounded-lg border border-slate-200 divide-y divide-slate-100 max-h-40 overflow-y-auto ${noTemplate ? "opacity-40 pointer-events-none" : ""}`}>
-                        {filteredTemplates.length === 0 ? (
-                          <p className="px-3 py-2 text-xs text-slate-400">No templates match your search.</p>
-                        ) : filteredTemplates.map((t) => (
-                          <label
-                            key={t.id}
-                            className={`flex items-start gap-2.5 px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors ${selectedTemplate === t.id ? "bg-violet-50" : ""}`}
-                          >
-                            <input
-                              type="radio"
-                              name="template"
-                              value={t.id}
-                              checked={selectedTemplate === t.id}
-                              onChange={() => setSelectedTemplate(t.id)}
-                              className="mt-0.5 accent-violet-600 shrink-0"
-                            />
-                            <div className="min-w-0">
-                              <p className="text-xs font-medium text-slate-800 truncate">{t.name}</p>
-                              {t.description && (
-                                <p className="text-[10px] text-slate-400 truncate">{t.description}</p>
-                              )}
-                            </div>
-                          </label>
-                        ))}
+                      {/* Searchable combobox */}
+                      <div className="relative">
+                        <input
+                          value={noTemplate ? "" : templateOpen ? templateSearch : (templates.find(t => t.id === selectedTemplate)?.name ?? "")}
+                          onChange={(e) => { setTemplateSearch(e.target.value); setTemplateOpen(true); }}
+                          onFocus={() => { setTemplateSearch(""); setTemplateOpen(true); }}
+                          onBlur={() => setTimeout(() => setTemplateOpen(false), 150)}
+                          placeholder="— select a template —"
+                          disabled={noTemplate}
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2 pr-8 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-40 disabled:bg-slate-50"
+                        />
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none">
+                          <path d="M4.427 7.427l3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 7H4.604a.25.25 0 0 0-.177.427Z"/>
+                        </svg>
+                        {templateOpen && (
+                          <div className="absolute z-10 top-full mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                            {filteredTemplates.length === 0 ? (
+                              <p className="px-3 py-2 text-xs text-slate-400">No templates match.</p>
+                            ) : filteredTemplates.map((t) => (
+                              <button
+                                key={t.id}
+                                type="button"
+                                onMouseDown={() => { setSelectedTemplate(t.id); setTemplateOpen(false); setTemplateSearch(""); }}
+                                className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 transition-colors ${selectedTemplate === t.id ? "bg-violet-50 text-violet-800" : "text-slate-800"}`}
+                              >
+                                <p className="font-medium truncate">{t.name}</p>
+                                {t.description && <p className="text-xs text-slate-400 truncate">{t.description}</p>}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       {/* None option */}
@@ -289,7 +287,7 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
                         <input
                           type="checkbox"
                           checked={noTemplate}
-                          onChange={(e) => { setNoTemplate(e.target.checked); if (e.target.checked) setTemplateSearch(""); }}
+                          onChange={(e) => { setNoTemplate(e.target.checked); setTemplateOpen(false); setTemplateSearch(""); }}
                           className="accent-violet-600"
                         />
                         <span className="text-xs text-slate-500">Send without a template (blank workflow)</span>
