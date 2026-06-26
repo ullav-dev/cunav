@@ -288,14 +288,13 @@ export default function TicketDetailPage() {
                     <dt className="text-xs text-slate-400 font-medium mb-1">Togra Story</dt>
                     <dd>
                       {tograUrl && ticket.togra_project_id ? (
-                        <a
-                          href={`${tograUrl}/en/projects/${ticket.togra_project_id}/stories/${ticket.togra_workflow_id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-violet-600 hover:underline"
+                        <button
+                          type="button"
+                          onClick={() => window.open(`${tograUrl}/en/projects/${ticket.togra_project_id}/stories/${ticket.togra_workflow_id}`, "togra-app")}
+                          className="text-sm text-violet-600 hover:underline text-left"
                         >
                           View story in Togra ↗
-                        </a>
+                        </button>
                       ) : (
                         <span className="text-xs text-violet-500 font-mono">{ticket.togra_workflow_id}</span>
                       )}
@@ -421,14 +420,13 @@ export default function TicketDetailPage() {
                 <div className="bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 space-y-1">
                   <p className="text-xs font-medium text-violet-700">Sent to Togra</p>
                   {tograUrl && ticket.togra_project_id ? (
-                    <a
-                      href={`${tograUrl}/en/projects/${ticket.togra_project_id}/stories/${ticket.togra_workflow_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-violet-600 hover:underline"
+                    <button
+                      type="button"
+                      onClick={() => window.open(`${tograUrl}/en/projects/${ticket.togra_project_id}/stories/${ticket.togra_workflow_id}`, "togra-app")}
+                      className="text-xs text-violet-600 hover:underline text-left"
                     >
                       View story in Togra ↗
-                    </a>
+                    </button>
                   ) : (
                     <p className="text-xs text-violet-500 font-mono truncate">{ticket.togra_workflow_id}</p>
                   )}

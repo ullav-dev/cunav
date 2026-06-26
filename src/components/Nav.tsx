@@ -44,11 +44,11 @@ export default function Nav() {
     return `${appBase}/en/auth/sso?t=${t}`;
   }
 
-  function openApp(windowRef: React.MutableRefObject<Window | null>, url: string) {
+  function openApp(windowRef: React.MutableRefObject<Window | null>, url: string, windowName: string) {
     if (windowRef.current && !windowRef.current.closed) {
       windowRef.current.focus();
     } else {
-      windowRef.current = window.open(url, "_blank") ?? null;
+      windowRef.current = window.open(url, windowName) ?? null;
     }
   }
 
@@ -109,7 +109,7 @@ export default function Nav() {
                     {showTogra && (
                       <button
                         type="button"
-                        onClick={() => openApp(tograWindowRef, ssoUrl(tograUrl))}
+                        onClick={() => openApp(tograWindowRef, ssoUrl(tograUrl), "togra-app")}
                         title="Open Togra (Project Management)"
                         className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 px-2 py-1.5 rounded-lg transition-colors"
                       >
@@ -120,7 +120,7 @@ export default function Nav() {
                     {showObair && (
                       <button
                         type="button"
-                        onClick={() => openApp(obairWindowRef, ssoUrl(obairUrl))}
+                        onClick={() => openApp(obairWindowRef, ssoUrl(obairUrl), "obair-app")}
                         title="Open Obair (AWE)"
                         className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 px-2 py-1.5 rounded-lg transition-colors"
                       >
