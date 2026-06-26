@@ -4,6 +4,8 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { loadPreference, type AiPreference } from "@/lib/ai-settings";
+import { Link } from "@/i18n/navigation";
 import type { Ticket } from "@/lib/types";
 
 interface Props {
@@ -24,21 +26,38 @@ export default function AiChatExplorer({ ticket }: Props) {
   const { token } = useAuth();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
+  const [pref, setPref] = useState<AiPreference>({ provider: "anthropic", model: "claude-haiku-4-5-20251001" });
+  const [notConfigured, setNotConfigured] = useState(false);
+
+  useEffect(() => {
+    setPref(loadPreference());
+  }, []);
 
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
         api: "/api/ai/chat",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: ticket ? { ticketContext: buildTicketContext(ticket) } : {},
+        body: {
+          ...(ticket ? { ticketContext: buildTicketContext(ticket) } : {}),
+          provider: pref.provider,
+          model: pref.model,
+          ...(pref.ollamaUrl ? { ollamaUrl: pref.ollamaUrl } : {}),
+        },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [token, ticket?.id],
+    [token, ticket?.id, pref.provider, pref.model, pref.ollamaUrl],
   );
 
   const { messages, sendMessage, status, error } = useChat({ transport });
 
   const isLoading = status === "streaming" || status === "submitted";
+
+  useEffect(() => {
+    if (error?.message?.includes("not configured") || error?.message?.includes("not configured")) {
+      setNotConfigured(true);
+    }
+  }, [error]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -48,12 +67,34 @@ export default function AiChatExplorer({ ticket }: Props) {
     e.preventDefault();
     const text = input.trim();
     if (!text || isLoading) return;
+    setNotConfigured(false);
     setInput("");
     sendMessage({ text });
   }
 
+  if (notConfigured) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center px-6 py-12 gap-3">
+        <svg viewBox="0 0 24 24" fill="currentColor" className="w-10 h-10 text-slate-300">
+          <path d="M12 3C6.486 3 2 6.691 2 11.25c0 2.444 1.198 4.639 3.107 6.176-.178 1.07-.567 2.09-1.107 3.09.1.003.1.003.2.187a.5.5 0 0 0 .458.297h.042a14.16 14.16 0 0 0 4.4-1.6c.986.267 2.014.4 3 .4 5.514 0 10-3.691 10-8.25S17.514 3 12 3Z"/>
+        </svg>
+        <p className="text-sm font-medium text-slate-700">AI provider not configured</p>
+        <p className="text-xs text-slate-400">The selected provider has no API key set. Check Settings or ask your administrator.</p>
+        <Link href="/settings" className="text-sm font-medium text-violet-700 hover:text-violet-800 transition-colors">
+          Go to Settings →
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full">
+      {/* Provider badge */}
+      <div className="flex items-center justify-between shrink-0 pb-2 mb-2 border-b border-slate-100">
+        <span className="text-xs text-slate-400 capitalize">{pref.provider} · {pref.model}</span>
+        <Link href="/settings" className="text-xs text-slate-400 hover:text-violet-700 transition-colors">Settings</Link>
+      </div>
+
       <div className="flex-1 overflow-y-auto space-y-3 pr-1 pb-2">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
@@ -87,7 +128,7 @@ export default function AiChatExplorer({ ticket }: Props) {
             </div>
           </div>
         )}
-        {error && (
+        {error && !notConfigured && (
           <p className="text-xs text-red-500 text-center px-2">
             {error.message ?? "Something went wrong."}
           </p>

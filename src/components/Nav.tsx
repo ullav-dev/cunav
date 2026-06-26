@@ -165,6 +165,13 @@ export default function Nav() {
                       >
                         {t("myDetails")}
                       </button>
+                      <Link
+                        href="/settings"
+                        onClick={() => setDropdownOpen(false)}
+                        className="flex items-center px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                      >
+                        {t("settings")}
+                      </Link>
                       {userIsAdmin && (
                         <>
                           <div className="my-1 border-t border-slate-100" />

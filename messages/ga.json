@@ -12,6 +12,7 @@
     "signIn": "Sínigh isteach",
     "signOut": "Sínigh amach",
     "myDetails": "Mo Shonraí",
+    "settings": "Socruithe",
     "about": "Faoi Cunav"
   },
   "about": {
@@ -180,6 +181,21 @@
       "create": "Cruthaigh",
       "error": "Theip ar chruthú scuaine"
     }
+  },
+  "settings": {
+    "title": "Socruithe",
+    "subtitle": "Cumraigh do chúntóir AI agus do roghanna",
+    "aiSection": "Cúntóir AI",
+    "aiDescription": "Roghnaigh an soláthraí AI agus an samhail le húsáid sa phainéal Triage. Socraíonn an riarthóir eochracha API.",
+    "providerLabel": "Soláthraí",
+    "modelLabel": "Samhail",
+    "ollamaUrlLabel": "URL Ollama",
+    "ollamaLocalBadge": "Áitiúil",
+    "ollamaHint": "URL do fhreastalaí Ollama áitiúil.",
+    "keyNote": "Socraíonn an riarthóir eochracha API trí athróga timpeallachta.",
+    "loading": "Ag luchtú…",
+    "save": "Sábháil roghanna",
+    "saved": "Sábháilte"
   },
   "notes": {
     "loading": "Ag luchtú nótaí…",
