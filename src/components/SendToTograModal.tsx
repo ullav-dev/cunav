@@ -15,6 +15,7 @@ interface Job {
   id: string;
   name: string;
   job_type: string;
+  project_id: string | null;
 }
 
 interface WorkflowTemplate {
@@ -66,7 +67,8 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
 
   // Load jobs when project changes
   useEffect(() => {
-    if (!selectedProject || !token) { setJobs([]); setSelectedJob(""); return; }
+    setJobs([]); setSelectedJob(""); // clear immediately to avoid stale job from previous project
+    if (!selectedProject || !token) return;
     setLoadingJobs(true);
     fetch(`/api/jobs?project_id=${selectedProject}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
@@ -170,7 +172,9 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
       }
       const project = projects.find((p) => p.id === selectedProject);
       const job = jobs.find((j) => j.id === selectedJob);
-      onSent(created.id, selectedProject, project?.name ?? "Togra", job?.name ?? "backlog");
+      // Use the job's own project_id as the authoritative cross-reference, not selectedProject
+      const actualProjectId = job?.project_id ?? selectedProject;
+      onSent(created.id, actualProjectId, project?.name ?? "Togra", job?.name ?? "backlog");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send to Togra");
     } finally {
