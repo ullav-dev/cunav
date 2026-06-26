@@ -54,9 +54,13 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data) => {
         const all: Job[] = Array.isArray(data) ? data : (data.jobs ?? []);
-        const list = all.filter((j) => j.job_type === "backlog" || j.job_type === "sprint");
+        const list = all
+          .filter((j) => j.job_type === "backlog" || j.job_type === "sprint")
+          .sort((a, b) => (a.job_type === "backlog" ? -1 : 1) - (b.job_type === "backlog" ? -1 : 1));
         setJobs(list);
-        if (list.length > 0) setSelectedJob(list[0].id);
+        const backlog = list.find((j) => j.job_type === "backlog");
+        if (backlog) setSelectedJob(backlog.id);
+        else if (list.length > 0) setSelectedJob(list[0].id);
       })
       .catch(() => setJobs([]))
       .finally(() => setLoadingJobs(false));
