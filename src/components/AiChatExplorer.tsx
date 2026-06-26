@@ -66,11 +66,90 @@ function getTextFromMessage(msg: UIMessage): string {
   return msg.parts.filter(isTextUIPart).map((p) => p.text).join("");
 }
 
+// ─── save-as-note dialog ──────────────────────────────────────────────────────
+
+interface SaveNoteDialogProps {
+  initialTitle: string;
+  initialBody: string;
+  onConfirm: (title: string, body: string) => Promise<void>;
+  onCancel: () => void;
+}
+
+function SaveNoteDialog({ initialTitle, initialBody, onConfirm, onCancel }: SaveNoteDialogProps) {
+  const [title, setTitle] = useState(initialTitle);
+  const [body, setBody] = useState(initialBody);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!title.trim()) return;
+    setSaving(true);
+    try {
+      await onConfirm(title.trim(), body);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onCancel}>
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-lg flex flex-col gap-4 p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-slate-800">Save as note</h2>
+          <button onClick={onCancel} className="text-slate-400 hover:text-slate-600 transition-colors">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+              <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-slate-600">Title</label>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
+            autoFocus
+          />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-slate-600">Content</label>
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={10}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400 resize-y"
+          />
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !title.trim()}
+            className="px-4 py-2 text-sm font-medium bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+          >
+            {saving ? "Saving…" : "Save note"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── component ────────────────────────────────────────────────────────────────
 
 interface Props {
   ticket?: Ticket;
-  onSaveAsNote?: (title: string, body: string) => void;
+  onSaveAsNote?: (title: string, body: string) => Promise<void>;
 }
 
 function buildTicketContext(ticket: Ticket): string {
@@ -91,7 +170,7 @@ export default function AiChatExplorer({ ticket, onSaveAsNote }: Props) {
   const [pref, setPref] = useState<AiPreference>({ provider: "anthropic", model: "claude-haiku-4-5-20251001" });
   const [notConfigured, setNotConfigured] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [saving, setSaving] = useState<string | null>(null); // message id being saved
+  const [pendingNote, setPendingNote] = useState<{ title: string; body: string } | null>(null);
 
   useEffect(() => {
     setPref(loadPreference());
@@ -147,16 +226,10 @@ export default function AiChatExplorer({ ticket, onSaveAsNote }: Props) {
     setMessages([]);
   }
 
-  async function handleSaveMessage(msg: UIMessage) {
+  function handleSaveMessage(msg: UIMessage) {
     if (!onSaveAsNote) return;
-    setSaving(msg.id);
-    try {
-      const date = new Date().toLocaleDateString();
-      const body = getTextFromMessage(msg);
-      onSaveAsNote(`AI response — ${date}`, body);
-    } finally {
-      setSaving(null);
-    }
+    const date = new Date().toLocaleDateString();
+    setPendingNote({ title: `AI response — ${date}`, body: getTextFromMessage(msg) });
   }
 
   function handleSaveConversation() {
@@ -169,7 +242,7 @@ export default function AiChatExplorer({ ticket, onSaveAsNote }: Props) {
           : `**AI:** ${getTextFromMessage(m)}`,
       )
       .join("\n\n---\n\n");
-    onSaveAsNote(`AI conversation — ${date}`, body);
+    setPendingNote({ title: `AI conversation — ${date}`, body });
   }
 
   if (notConfigured) {
@@ -189,6 +262,14 @@ export default function AiChatExplorer({ ticket, onSaveAsNote }: Props) {
 
   return (
     <div className="flex flex-col h-full">
+      {pendingNote && onSaveAsNote && (
+        <SaveNoteDialog
+          initialTitle={pendingNote.title}
+          initialBody={pendingNote.body}
+          onConfirm={async (title, body) => { await onSaveAsNote(title, body); setPendingNote(null); }}
+          onCancel={() => setPendingNote(null)}
+        />
+      )}
       {/* Header */}
       <div className="flex items-center justify-between shrink-0 pb-2 mb-2 border-b border-slate-100">
         <span className="text-xs text-slate-400 capitalize">{pref.provider} · {pref.model}</span>
@@ -245,13 +326,12 @@ export default function AiChatExplorer({ ticket, onSaveAsNote }: Props) {
                   {onSaveAsNote && (
                     <button
                       onClick={() => handleSaveMessage(m)}
-                      disabled={saving === m.id}
-                      className="mt-2 text-xs text-slate-400 hover:text-violet-700 transition-colors flex items-center gap-1 disabled:opacity-50"
+                      className="mt-2 text-xs text-slate-400 hover:text-violet-700 transition-colors flex items-center gap-1"
                     >
                       <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
                         <path d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v13.5a.5.5 0 0 1-.777.416L8 13.101l-5.223 2.815A.5.5 0 0 1 2 15.5V2Z"/>
                       </svg>
-                      {saving === m.id ? "Saving…" : "Save as note"}
+                      Save as note
                     </button>
                   )}
                 </>
