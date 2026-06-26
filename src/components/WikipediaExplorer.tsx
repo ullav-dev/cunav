@@ -32,7 +32,7 @@ function summaryUrl(lang: string, key: string) {
 }
 
 interface Props {
-  onSaveAsNote?: (title: string, description: string, body: string) => void;
+  onSaveAsNote?: (title: string, body: string) => void;
   initialQuery?: string;
 }
 
@@ -117,7 +117,7 @@ export default function WikipediaExplorer({ onSaveAsNote, initialQuery = "" }: P
     if (!summary || !onSaveAsNote) return;
     const url = summary.content_urls.desktop.page;
     const body = `${summary.extract}\n\n*Source: [${summary.title} on Wikipedia](${url})*`;
-    onSaveAsNote(summary.title, url, body);
+    onSaveAsNote(summary.title, body);
   }
 
   return (

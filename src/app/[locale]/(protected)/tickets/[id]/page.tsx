@@ -111,10 +111,9 @@ export default function TicketDetailPage() {
     router.push("/tickets");
   }
 
-  async function handleSaveAsNote(title: string, description: string, body: string) {
+  async function handleSaveAsNote(title: string, body: string) {
     if (!token || !ticket) return;
-    const noteBody = [description, body].filter(Boolean).join("\n\n");
-    await createNote(token, { entity_type: "workflow", entity_id: ticket.id, title, body: noteBody || undefined, is_shared: false });
+    await createNote(token, { entity_type: "workflow", entity_id: ticket.id, title, body: body || undefined, is_shared: false });
   }
 
   async function handleTograSent(workflowId: string, project: string, job: string) {
@@ -433,7 +432,7 @@ export default function TicketDetailPage() {
                 </div>
               )}
               {explorerTab === "ai" && (
-                <AiChatExplorer ticket={ticket} />
+                <AiChatExplorer ticket={ticket} onSaveAsNote={handleSaveAsNote} />
               )}
               {explorerTab === "wikipedia" && (
                 <WikipediaExplorer onSaveAsNote={handleSaveAsNote} />
