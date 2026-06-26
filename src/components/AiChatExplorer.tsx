@@ -1,8 +1,12 @@
 "use client";
 
+"use client";
+
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useAuth } from "@/contexts/AuthContext";
 import { loadPreference, type AiPreference } from "@/lib/ai-settings";
 import { Link } from "@/i18n/navigation";
@@ -106,14 +110,22 @@ export default function AiChatExplorer({ ticket }: Props) {
         )}
         {messages.map((m) => (
           <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+            <div className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed ${
               m.role === "user"
-                ? "bg-violet-600 text-white"
+                ? "bg-violet-600 text-white whitespace-pre-wrap"
                 : "bg-white border border-slate-200 text-slate-800"
             }`}>
-              {m.parts?.map((part, i) =>
-                part.type === "text" ? <span key={i}>{part.text}</span> : null
-              )}
+              {m.role === "user"
+                ? m.parts?.map((part, i) =>
+                    part.type === "text" ? <span key={i}>{part.text}</span> : null
+                  )
+                : <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    className="prose prose-sm prose-slate max-w-none prose-p:my-1 prose-headings:mb-1 prose-headings:mt-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-pre:my-1 prose-code:text-violet-700 prose-code:bg-violet-50 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none"
+                  >
+                    {m.parts?.filter((p) => p.type === "text").map((p) => (p as { type: "text"; text: string }).text).join("") ?? ""}
+                  </ReactMarkdown>
+              }
             </div>
           </div>
         ))}
