@@ -13,6 +13,7 @@ interface Project {
 interface Job {
   id: string;
   name: string;
+  job_type: string;
 }
 
 interface Props {
@@ -52,7 +53,8 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
     fetch(`/api/jobs?project_id=${selectedProject}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((data) => {
-        const list: Job[] = Array.isArray(data) ? data : (data.jobs ?? []);
+        const all: Job[] = Array.isArray(data) ? data : (data.jobs ?? []);
+        const list = all.filter((j) => j.job_type === "backlog" || j.job_type === "sprint");
         setJobs(list);
         if (list.length > 0) setSelectedJob(list[0].id);
       })
@@ -134,7 +136,7 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
                       <span className="text-xs text-slate-400">Loading backlogs…</span>
                     </div>
                   ) : jobs.length === 0 ? (
-                    <p className="text-xs text-slate-400">No backlogs found in this project.</p>
+                    <p className="text-xs text-slate-400">No backlog or sprint found in this project.</p>
                   ) : (
                     <select
                       value={selectedJob}
