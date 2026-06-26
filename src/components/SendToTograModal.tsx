@@ -26,7 +26,7 @@ interface WorkflowTemplate {
 interface Props {
   ticket: Ticket;
   onClose: () => void;
-  onSent: (tograWorkflowId: string, projectName: string, jobName: string) => void;
+  onSent: (tograWorkflowId: string, tograProjectId: string, projectName: string, jobName: string) => void;
 }
 
 export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
@@ -126,34 +126,43 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
     if (!token || !selectedProject || !selectedJob) return;
     setSending(true); setError(null);
     try {
+      const cunávUrl = window.location.origin;
+      const backlink = `\n\n---\n*Cunav ticket: [${ticket.name}](${cunávUrl}/en/tickets/${ticket.id})*`;
+      const enrichedDescription = (ticket.description ?? "") + backlink;
+
       let created;
       if (!noTemplate && selectedTemplate) {
-        // Clone the selected template into the job
         const res = await fetch(`/api/jobs/${selectedJob}/workflows/from-template/${selectedTemplate}`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        // from-template returns the workflow — update name/description to match ticket
         created = await res.json();
-        // Patch name and description to match the ticket
-        await fetch(`/api/workflows/${created.id}`, {
+        // Rename, enrich description, set type/priority/visibility to match ticket
+        const patch = await fetch(`/api/workflows/${created.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ name: ticket.name, description: ticket.description ?? undefined }),
+          body: JSON.stringify({
+            name: ticket.name,
+            description: enrichedDescription,
+            ticket_type: ticket.ticket_type ?? undefined,
+            priority: ticket.priority ?? undefined,
+            is_shared: true,
+          }),
         });
-        created = { ...created, name: ticket.name };
+        if (!patch.ok) throw new Error(`Patch failed: HTTP ${patch.status}`);
+        created = await patch.json();
       } else {
-        // No template — create a blank workflow
         const res = await fetch("/api/workflows", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             name: ticket.name,
-            description: ticket.description ?? "",
+            description: enrichedDescription,
             job_id: selectedJob,
             is_shared: true,
             ticket_type: ticket.ticket_type ?? undefined,
+            priority: ticket.priority ?? undefined,
           }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -161,7 +170,7 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
       }
       const project = projects.find((p) => p.id === selectedProject);
       const job = jobs.find((j) => j.id === selectedJob);
-      onSent(created.id, project?.name ?? "Togra", job?.name ?? "backlog");
+      onSent(created.id, selectedProject, project?.name ?? "Togra", job?.name ?? "backlog");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send to Togra");
     } finally {

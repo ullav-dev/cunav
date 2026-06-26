@@ -19,6 +19,7 @@ import NotesPanel from "@/components/notes/NotesPanel";
 import WikipediaExplorer from "@/components/WikipediaExplorer";
 import AiChatExplorer from "@/components/AiChatExplorer";
 import SendToTograModal from "@/components/SendToTograModal";
+import { useAppUrls } from "@/contexts/AppUrlsContext";
 import { useResize } from "@/hooks/useResize";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -56,7 +57,7 @@ export default function TicketDetailPage() {
   const [mainTab, setMainTab] = useState<MainTab>("details");
   const [explorerTab, setExplorerTab] = useState<ExplorerTab>("notes");
   const [showSendToTogra, setShowSendToTogra] = useState(false);
-  const [tograSentInfo, setTograSentInfo] = useState<string | null>(null);
+  const { tograUrl } = useAppUrls();
   const titleRef = useRef<HTMLInputElement>(null);
   const rightResize = useResize({ initial: 380, min: 280, max: 600, axis: "x", reverse: true });
 
@@ -116,18 +117,25 @@ export default function TicketDetailPage() {
     await createNote(token, { entity_type: "workflow", entity_id: ticket.id, title, body: body || undefined, is_shared: isShared });
   }
 
-  async function handleTograSent(workflowId: string, project: string, job: string) {
+  async function handleTograSent(workflowId: string, projectId: string, project: string, job: string) {
     setShowSendToTogra(false);
-    setTograSentInfo(`Sent to ${project} › ${job}`);
-    if (token && ticket) {
-      await createNote(token, {
-        entity_type: "workflow",
-        entity_id: ticket.id,
-        title: `Sent to Togra: ${project} › ${job}`,
-        body: `Togra workflow ID: \`${workflowId}\``,
-        is_shared: true,
-      });
-    }
+    if (!token || !ticket) return;
+    // Store Togra cross-reference on the ticket and advance status to In Progress
+    await patch({
+      togra_workflow_id: workflowId,
+      togra_project_id: projectId,
+      status: "In Progress",
+    });
+    const tograStoryUrl = tograUrl ? `${tograUrl}/en/projects/${projectId}/stories/${workflowId}` : null;
+    await createNote(token, {
+      entity_type: "workflow",
+      entity_id: ticket.id,
+      title: `Sent to Togra: ${project} › ${job}`,
+      body: tograStoryUrl
+        ? `Story created in **${project}** › **${job}**.\n\n[View in Togra ↗](${tograStoryUrl})`
+        : `Story created in **${project}** › **${job}**. Togra workflow ID: \`${workflowId}\``,
+      is_shared: true,
+    });
   }
 
   if (loading) return (
@@ -386,9 +394,21 @@ export default function TicketDetailPage() {
             </div>
 
             <div className="border-t border-slate-100 pt-4 mt-auto">
-              {tograSentInfo ? (
-                <div className="text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
-                  {tograSentInfo}
+              {ticket.togra_workflow_id ? (
+                <div className="bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 space-y-1">
+                  <p className="text-xs font-medium text-violet-700">Sent to Togra</p>
+                  {tograUrl && ticket.togra_project_id ? (
+                    <a
+                      href={`${tograUrl}/en/projects/${ticket.togra_project_id}/stories/${ticket.togra_workflow_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-violet-600 hover:underline"
+                    >
+                      View story in Togra ↗
+                    </a>
+                  ) : (
+                    <p className="text-xs text-violet-500 font-mono truncate">{ticket.togra_workflow_id}</p>
+                  )}
                 </div>
               ) : (
                 <button

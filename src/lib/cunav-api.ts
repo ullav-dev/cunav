@@ -74,6 +74,8 @@ export interface UpdateTicketPayload {
   assigned_to?: string | null;
   job_id?: string;
   is_shared?: boolean;
+  togra_workflow_id?: string;
+  togra_project_id?: string;
 }
 
 export const updateTicket = (token: string, id: string, patch: UpdateTicketPayload): Promise<Ticket> =>
