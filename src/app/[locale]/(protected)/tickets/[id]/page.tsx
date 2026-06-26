@@ -283,6 +283,25 @@ export default function TicketDetailPage() {
                     </select>
                   </dd>
                 </div>
+                {ticket.togra_workflow_id && (
+                  <div className="col-span-2 pt-2 border-t border-slate-200">
+                    <dt className="text-xs text-slate-400 font-medium mb-1">Togra Story</dt>
+                    <dd>
+                      {tograUrl && ticket.togra_project_id ? (
+                        <a
+                          href={`${tograUrl}/en/projects/${ticket.togra_project_id}/stories/${ticket.togra_workflow_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-violet-600 hover:underline"
+                        >
+                          View story in Togra ↗
+                        </a>
+                      ) : (
+                        <span className="text-xs text-violet-500 font-mono">{ticket.togra_workflow_id}</span>
+                      )}
+                    </dd>
+                  </div>
+                )}
               </dl>
 
               {/* Description */}
