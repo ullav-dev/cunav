@@ -110,6 +110,20 @@ export function hasObairAccess(token: string | null): boolean {
   );
 }
 
+/** True if the user has product_roles.cunav === "support" in any team — grants cross-team Togra dispatch. */
+export function hasSupportRole(token: string | null): boolean {
+  return Object.values(getTeamClaims(token)).some(
+    (t) => (t.product_roles ?? {})["cunav"] === "support",
+  );
+}
+
+/** Team IDs where both cunav and obair are enabled — required for creating queues/tickets in awe-server. */
+export function getAweTeamIds(token: string | null): string[] {
+  return Object.entries(getTeamClaims(token))
+    .filter(([, t]) => (t.products ?? []).includes("obair"))
+    .map(([id]) => id);
+}
+
 export function hasTograAccess(token: string | null): boolean {
   return Object.values(getTeamClaims(token)).some(
     (t) => (t.products ?? []).includes("togra"),
@@ -158,6 +172,7 @@ export interface AdminTeamMember {
   user: AdminTeamUser;
   status: string;
   role: string;
+  product_roles: Record<string, string>;
   joined_at: string | null;
 }
 

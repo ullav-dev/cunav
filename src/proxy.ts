@@ -8,6 +8,12 @@ const intlMiddleware = createMiddleware(routing);
 function route(request: NextRequest): NextResponse {
   const { pathname, search } = request.nextUrl;
 
+  // Next.js API routes — pass through without rewrite or intl locale prefix.
+  if (pathname.startsWith("/api/ai/") || pathname.startsWith("/api/notify/")) {
+    return NextResponse.next();
+  }
+
+  // All other /api/* paths forward to awe-server.
   if (pathname.startsWith("/api/")) {
     const apiUrl = process.env.API_URL ?? "http://localhost:8085";
     return NextResponse.rewrite(
