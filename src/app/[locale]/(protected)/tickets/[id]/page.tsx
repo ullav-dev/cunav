@@ -120,22 +120,26 @@ export default function TicketDetailPage() {
   async function handleTograSent(workflowId: string, projectId: string, project: string, job: string) {
     setShowSendToTogra(false);
     if (!token || !ticket) return;
-    // Store Togra cross-reference on the ticket and advance status to In Progress
-    await patch({
-      togra_workflow_id: workflowId,
-      togra_project_id: projectId,
-      status: "In Progress",
-    });
-    const tograStoryUrl = tograUrl ? `${tograUrl}/en/projects/${projectId}/stories/${workflowId}` : null;
-    await createNote(token, {
-      entity_type: "workflow",
-      entity_id: ticket.id,
-      title: `Sent to Togra: ${project} › ${job}`,
-      body: tograStoryUrl
-        ? `Story created in **${project}** › **${job}**.\n\n[View in Togra ↗](${tograStoryUrl})`
-        : `Story created in **${project}** › **${job}**. Togra workflow ID: \`${workflowId}\``,
-      is_shared: true,
-    });
+    try {
+      await patch({
+        togra_workflow_id: workflowId,
+        togra_project_id: projectId,
+        status: "In Progress",
+      });
+      const tograStoryUrl = tograUrl ? `${tograUrl}/en/projects/${projectId}/stories/${workflowId}` : null;
+      await createNote(token, {
+        entity_type: "workflow",
+        entity_id: ticket.id,
+        title: `Sent to Togra: ${project} › ${job}`,
+        body: tograStoryUrl
+          ? `Story created in **${project}** › **${job}**.\n\n[View in Togra ↗](${tograStoryUrl})`
+          : `Story created in **${project}** › **${job}**. Togra workflow ID: \`${workflowId}\``,
+        is_shared: true,
+      });
+    } catch (err) {
+      console.error("handleTograSent failed:", err);
+      setError(`Sent to Togra but failed to update ticket: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   if (loading) return (
