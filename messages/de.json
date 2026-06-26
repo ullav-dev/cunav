@@ -1,0 +1,233 @@
+{
+  "localeSwitcher": {
+    "label": "Sprache",
+    "en": "English",
+    "de": "Deutsch",
+    "ga": "Gaeilge"
+  },
+  "nav": {
+    "tickets": "Tickets",
+    "triage": "Triage",
+    "queues": "Warteschlangen",
+    "signIn": "Anmelden",
+    "signOut": "Abmelden",
+    "myDetails": "Meine Daten",
+    "about": "Über Cunav"
+  },
+  "about": {
+    "tagline": "Kundensupport",
+    "version": "Version",
+    "build": "Build",
+    "user": "Angemeldet als",
+    "support": "Support",
+    "contact": "Kontakt",
+    "close": "Schließen"
+  },
+  "idleWarning": {
+    "title": "Inaktivität erkannt",
+    "message": "Sie werden in {seconds} Sekunden abgemeldet.",
+    "stayLoggedIn": "Angemeldet bleiben",
+    "logoutNow": "Jetzt abmelden"
+  },
+  "footer": {
+    "tagline": "Kundensupport"
+  },
+  "status": {
+    "Not Started": "Neu",
+    "Ready": "Offen",
+    "In Progress": "In Bearbeitung",
+    "On Hold": "Pausiert",
+    "Complete": "Gelöst",
+    "Cancelled": "Abgebrochen"
+  },
+  "priority": {
+    "critical": "Kritisch",
+    "high": "Hoch",
+    "medium": "Mittel",
+    "low": "Niedrig"
+  },
+  "ticketType": {
+    "bug": "Fehler",
+    "feature": "Feature",
+    "question": "Frage",
+    "improvement": "Verbesserung",
+    "task": "Aufgabe"
+  },
+  "confirmDialog": {
+    "cancel": "Abbrechen"
+  },
+  "visibility": {
+    "shared": "Mit Team geteilt",
+    "private": "Privat"
+  },
+  "myDetails": {
+    "title": "Meine Daten",
+    "avatarUrl": "Avatar-URL",
+    "useGravatar": "Gravatar verwenden",
+    "generating": "Wird generiert…",
+    "clear": "Löschen",
+    "firstName": "Vorname",
+    "lastName": "Nachname",
+    "email": "E-Mail",
+    "emailNote": "Wenden Sie sich an den Support, um Ihre E-Mail-Adresse zu ändern.",
+    "cancel": "Abbrechen",
+    "saving": "Wird gespeichert…",
+    "save": "Änderungen speichern"
+  },
+  "login": {
+    "appTagline": "Kundensupport",
+    "emailLabel": "E-Mail",
+    "passwordLabel": "Passwort",
+    "signIn": "Anmelden",
+    "forgotPassword": "Passwort vergessen?",
+    "pleaseWait": "Bitte warten…",
+    "resetPasswordTitle": "Passwort zurücksetzen",
+    "sendResetLink": "Link senden",
+    "backToSignIn": "Zurück zur Anmeldung",
+    "checkInbox": "Prüfen Sie Ihren Posteingang für den Passwort-Reset-Link.",
+    "errors": {
+      "serverError": "Serverfehler. Bitte versuchen Sie es erneut.",
+      "noAccess": "Ihr Konto hat keinen Zugang zu Cunav.",
+      "noAccessQuery": "Ihr Konto hat keinen Zugang zu Cunav. Bitten Sie den Teaminhaber, Cunav für Ihr Team zu aktivieren.",
+      "loginFailed": "Anmeldung fehlgeschlagen. Bitte überprüfen Sie Ihre Zugangsdaten.",
+      "resetFailed": "Link konnte nicht gesendet werden."
+    }
+  },
+  "tickets": {
+    "title": "Tickets",
+    "subtitle": "Alle Support-Tickets in Ihren Teams",
+    "newTicket": "Neues Ticket",
+    "loading": "Laden…",
+    "empty": "Noch keine Tickets",
+    "emptySubtitle": "Erstellen Sie Ihr erstes Ticket, um zu beginnen.",
+    "createTicket": "Ticket erstellen",
+    "deleteConfirmTitle": "Ticket \"{name}\" löschen?",
+    "deleteConfirmMessage": "Dieses Ticket und alle seine Notizen werden dauerhaft gelöscht.",
+    "deleteConfirmLabel": "Ticket löschen",
+    "filters": {
+      "all": "Alle",
+      "open": "Offen",
+      "inProgress": "In Bearbeitung",
+      "resolved": "Gelöst",
+      "myTickets": "Meine Tickets"
+    },
+    "col": {
+      "id": "ID",
+      "type": "Typ",
+      "priority": "Priorität",
+      "title": "Titel",
+      "status": "Status",
+      "assignee": "Bearbeiter",
+      "queue": "Warteschlange",
+      "created": "Erstellt"
+    }
+  },
+  "ticket": {
+    "loading": "Laden…",
+    "notFound": "Ticket nicht gefunden.",
+    "breadcrumbTickets": "Tickets",
+    "notesTitle": "Notizen",
+    "tabDetails": "Details",
+    "tabTriage": "Triage",
+    "editDescription": "Beschreibung bearbeiten",
+    "addDescription": "Beschreibung hinzufügen…",
+    "assignee": "Bearbeiter",
+    "unassigned": "Nicht zugewiesen",
+    "reporter": "Melder",
+    "queue": "Warteschlange",
+    "noQueue": "Keine Warteschlange",
+    "created": "Erstellt",
+    "updated": "Aktualisiert",
+    "assignToMe": "Mir zuweisen",
+    "statusLabel": "Status",
+    "deleteConfirmTitle": "Dieses Ticket löschen?",
+    "deleteConfirmMessage": "Dieses Ticket und alle seine Notizen werden dauerhaft gelöscht.",
+    "deleteConfirmLabel": "Ticket löschen"
+  },
+  "triage": {
+    "title": "Triage",
+    "subtitle": "Neue Tickets prüfen und kategorisieren",
+    "statusNew": "Neu",
+    "statusOpen": "Offen",
+    "showResolved": "Alle anzeigen",
+    "allClear": "Alles erledigt",
+    "allClearSubtitle": "Keine neuen Tickets zur Triage.",
+    "colType": "Typ",
+    "colPriority": "Priorität",
+    "colStatus": "Status",
+    "colAge": "Alter"
+  },
+  "queues": {
+    "title": "Warteschlangen",
+    "subtitle": "Support-Warteschlangen verwalten",
+    "newQueue": "Neue Warteschlange",
+    "loading": "Laden…",
+    "empty": "Noch keine Warteschlangen",
+    "emptySubtitle": "Erstellen Sie eine Warteschlange, um Tickets nach Kategorie oder Team zu organisieren.",
+    "createQueue": "Warteschlange erstellen",
+    "deleteConfirmTitle": "Warteschlange \"{name}\" löschen?",
+    "deleteConfirmMessage": "Tickets in dieser Warteschlange werden aus der Warteschlange entfernt, aber nicht gelöscht.",
+    "deleteConfirmLabel": "Warteschlange löschen",
+    "ticketCount": "{count} {count, plural, one {Ticket} other {Tickets}}",
+    "modal": {
+      "title": "Neue Warteschlange",
+      "nameLabel": "Name der Warteschlange",
+      "namePlaceholder": "z.B. Fehlermeldungen",
+      "teamLabel": "Team",
+      "teamPlaceholder": "— Team auswählen —",
+      "cancel": "Abbrechen",
+      "creating": "Wird erstellt…",
+      "create": "Erstellen",
+      "error": "Warteschlange konnte nicht erstellt werden"
+    }
+  },
+  "notes": {
+    "loading": "Notizen laden…",
+    "retry": "Erneut versuchen",
+    "newNote": "Neue Notiz",
+    "editNoteTitle": "Notiz bearbeiten",
+    "newNoteTitle": "Neue Notiz",
+    "titlePlaceholder": "Notiz-Titel *",
+    "bodyPlaceholder": "Details in Markdown hinzufügen…",
+    "saving": "Wird gespeichert…",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "saveFailed": "Speichern fehlgeschlagen",
+    "backToList": "← Zurück zur Liste",
+    "allNotes": "← Alle Notizen",
+    "noNotes": "Noch keine Notizen",
+    "addFirstNote": "Erste Notiz hinzufügen",
+    "shared": "Geteilt",
+    "private": "Privat",
+    "sharedWithTeam": "Mit Team geteilt",
+    "reply": "+ Antworten",
+    "repliesTitle": "Antworten",
+    "loadingReplies": "Laden…",
+    "replyPlaceholder": "Antwort schreiben…",
+    "sending": "Wird gesendet…",
+    "noBody": "Kein Inhalt",
+    "folder": "Ordner:",
+    "unfiled": "— Ohne Ordner —",
+    "foldersLabel": "Ordner",
+    "allNotesFilter": "Alle Notizen",
+    "myNotes": "Meine Notizen",
+    "sharedFilter": "Geteilt",
+    "folderNamePlaceholder": "Ordnername",
+    "noteCountSingle": "1 Notiz",
+    "noteCountPlural": "{count} Notizen",
+    "compactTitle": "Notizen ({count})",
+    "you": "Sie",
+    "unknown": "Unbekannt",
+    "justNow": "gerade eben",
+    "mAgo": "vor {count} Min.",
+    "hAgo": "vor {count} Std.",
+    "dAgo": "vor {count} Tagen",
+    "selectNote": "Notiz auswählen zum Lesen",
+    "deleteNoteTitle": "\"{title}\" löschen?",
+    "deleteNoteMessage": "Diese Notiz und alle Antworten werden dauerhaft gelöscht.",
+    "deleteNoteLabel": "Notiz löschen",
+    "deleteFolderTitle": "Ordner \"{name}\" löschen?",
+    "deleteFolderMessage": "Notizen in diesem Ordner werden ohne Ordner belassen, aber nicht gelöscht.",
+    "deleteFolderLabel": "Ordner löschen"
+  }
+}

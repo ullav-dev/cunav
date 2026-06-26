@@ -1,0 +1,233 @@
+{
+  "localeSwitcher": {
+    "label": "Teanga",
+    "en": "English",
+    "de": "Deutsch",
+    "ga": "Gaeilge"
+  },
+  "nav": {
+    "tickets": "Ticéid",
+    "triage": "Triage",
+    "queues": "Scuainí",
+    "signIn": "Sínigh isteach",
+    "signOut": "Sínigh amach",
+    "myDetails": "Mo Shonraí",
+    "about": "Faoi Cunav"
+  },
+  "about": {
+    "tagline": "Tacaíocht do Chustaiméirí",
+    "version": "Leagan",
+    "build": "Tógáil",
+    "user": "Sínithe isteach mar",
+    "support": "Tacaíocht",
+    "contact": "Teagmháil",
+    "close": "Dún"
+  },
+  "idleWarning": {
+    "title": "Tá tú díomhaoin",
+    "message": "Sínfear amach thú i gceann {seconds} soicind.",
+    "stayLoggedIn": "Fan sínithe isteach",
+    "logoutNow": "Sínigh amach anois"
+  },
+  "footer": {
+    "tagline": "Tacaíocht do Chustaiméirí"
+  },
+  "status": {
+    "Not Started": "Nua",
+    "Ready": "Oscailte",
+    "In Progress": "Ar Siúl",
+    "On Hold": "Ar Sos",
+    "Complete": "Réitithe",
+    "Cancelled": "Cealaithe"
+  },
+  "priority": {
+    "critical": "Criticiúil",
+    "high": "Ard",
+    "medium": "Meánach",
+    "low": "Íseal"
+  },
+  "ticketType": {
+    "bug": "Fabht",
+    "feature": "Gné",
+    "question": "Ceist",
+    "improvement": "Feabhas",
+    "task": "Tasc"
+  },
+  "confirmDialog": {
+    "cancel": "Cealaigh"
+  },
+  "visibility": {
+    "shared": "Roinnte leis an bhfoireann",
+    "private": "Príobháideach"
+  },
+  "myDetails": {
+    "title": "Mo Shonraí",
+    "avatarUrl": "URL Abhatár",
+    "useGravatar": "Úsáid Gravatar",
+    "generating": "Ag giniúint…",
+    "clear": "Glan",
+    "firstName": "Céadainm",
+    "lastName": "Sloinne",
+    "email": "Ríomhphost",
+    "emailNote": "Déan teagmháil le tacaíocht chun do sheoladh ríomhphoist a athrú.",
+    "cancel": "Cealaigh",
+    "saving": "Ag sábháil…",
+    "save": "Sábháil athruithe"
+  },
+  "login": {
+    "appTagline": "Tacaíocht do Chustaiméirí",
+    "emailLabel": "Ríomhphost",
+    "passwordLabel": "Pasfhocal",
+    "signIn": "Sínigh isteach",
+    "forgotPassword": "Pasfhocal dearmadta?",
+    "pleaseWait": "Fan le do thoil…",
+    "resetPasswordTitle": "Athshocraigh pasfhocal",
+    "sendResetLink": "Seol nasc athshocraithe",
+    "backToSignIn": "Ar ais chuig síniú isteach",
+    "checkInbox": "Seiceáil do bhosca isteach don nasc athshocraithe pasfhocail.",
+    "errors": {
+      "serverError": "Earráid freastalaí. Déan iarracht arís.",
+      "noAccess": "Níl rochtain ag do chuntas ar Cunav.",
+      "noAccessQuery": "Níl rochtain ag do chuntas ar Cunav. Iarr ar úinéir na foirne Cunav a chumasú don fhoireann.",
+      "loginFailed": "Theip ar an síniú isteach. Seiceáil do dhintiúir.",
+      "resetFailed": "Níorbh fhéidir an nasc a sheoladh."
+    }
+  },
+  "tickets": {
+    "title": "Ticéid",
+    "subtitle": "Gach ticéad tacaíochta thar do chuid foirne",
+    "newTicket": "Ticéad nua",
+    "loading": "Ag luchtú…",
+    "empty": "Níl aon ticéid fós",
+    "emptySubtitle": "Cruthaigh do chéad ticéad chun tosú.",
+    "createTicket": "Cruthaigh ticéad",
+    "deleteConfirmTitle": "Scrios ticéad \"{name}\"?",
+    "deleteConfirmMessage": "Scriosfar an ticéad seo agus a chuid nótaí go buan.",
+    "deleteConfirmLabel": "Scrios ticéad",
+    "filters": {
+      "all": "Gach ceann",
+      "open": "Oscailte",
+      "inProgress": "Ar Siúl",
+      "resolved": "Réitithe",
+      "myTickets": "Mo ticéid"
+    },
+    "col": {
+      "id": "ID",
+      "type": "Cineál",
+      "priority": "Tosaíocht",
+      "title": "Teideal",
+      "status": "Stádas",
+      "assignee": "Sannadh chuig",
+      "queue": "Scuaine",
+      "created": "Cruthaithe"
+    }
+  },
+  "ticket": {
+    "loading": "Ag luchtú…",
+    "notFound": "Ticéad gan aimsiú.",
+    "breadcrumbTickets": "Ticéid",
+    "notesTitle": "Nótaí",
+    "tabDetails": "Sonraí",
+    "tabTriage": "Triage",
+    "editDescription": "Cuir síos in eagar",
+    "addDescription": "Cuir síos leis…",
+    "assignee": "Sannadh chuig",
+    "unassigned": "Gan sannadh",
+    "reporter": "Tuairisceoir",
+    "queue": "Scuaine",
+    "noQueue": "Gan scuaine",
+    "created": "Cruthaithe",
+    "updated": "Nuashonraithe",
+    "assignToMe": "Sann dom",
+    "statusLabel": "Stádas",
+    "deleteConfirmTitle": "Scrios an ticéad seo?",
+    "deleteConfirmMessage": "Scriosfar an ticéad seo agus a chuid nótaí go buan. Ní féidir é seo a chur ar ceal.",
+    "deleteConfirmLabel": "Scrios ticéad"
+  },
+  "triage": {
+    "title": "Triage",
+    "subtitle": "Ticéid nua a athbhreithniú agus a chatagóiriú",
+    "statusNew": "Nua",
+    "statusOpen": "Oscailte",
+    "showResolved": "Taispeáin gach ceann",
+    "allClear": "Glan ar fad",
+    "allClearSubtitle": "Níl aon ticéid nua le triage.",
+    "colType": "Cineál",
+    "colPriority": "Tosaíocht",
+    "colStatus": "Stádas",
+    "colAge": "Aois"
+  },
+  "queues": {
+    "title": "Scuainí",
+    "subtitle": "Bainistigh scuainí tacaíochta",
+    "newQueue": "Scuaine nua",
+    "loading": "Ag luchtú…",
+    "empty": "Níl aon scuainí fós",
+    "emptySubtitle": "Cruthaigh scuaine chun ticéid a eagrú de réir catagóra nó foirne.",
+    "createQueue": "Cruthaigh scuaine",
+    "deleteConfirmTitle": "Scrios scuaine \"{name}\"?",
+    "deleteConfirmMessage": "Bainfear ticéid sa scuaine seo ón scuaine ach ní scriosfar iad.",
+    "deleteConfirmLabel": "Scrios scuaine",
+    "ticketCount": "{count} {count, plural, one {ticéad} other {ticéad}}",
+    "modal": {
+      "title": "Scuaine nua",
+      "nameLabel": "Ainm scuaine",
+      "namePlaceholder": "m.sh. Tuairiscí Fabhtanna",
+      "teamLabel": "Foireann",
+      "teamPlaceholder": "— Roghnaigh foireann —",
+      "cancel": "Cealaigh",
+      "creating": "Ag cruthú…",
+      "create": "Cruthaigh",
+      "error": "Theip ar chruthú scuaine"
+    }
+  },
+  "notes": {
+    "loading": "Ag luchtú nótaí…",
+    "retry": "Athdhéan",
+    "newNote": "Nóta nua",
+    "editNoteTitle": "Cuir nóta in eagar",
+    "newNoteTitle": "Nóta nua",
+    "titlePlaceholder": "Teideal nóta *",
+    "bodyPlaceholder": "Cuir sonraí le Markdown…",
+    "saving": "Ag sábháil…",
+    "save": "Sábháil",
+    "cancel": "Cealaigh",
+    "saveFailed": "Theip ar an sábháil",
+    "backToList": "← Ar ais chuig an liosta",
+    "allNotes": "← Gach nóta",
+    "noNotes": "Níl aon nótaí fós",
+    "addFirstNote": "Cuir an chéad nóta leis",
+    "shared": "Roinnte",
+    "private": "Príobháideach",
+    "sharedWithTeam": "Roinnte leis an bhfoireann",
+    "reply": "+ Freagair",
+    "repliesTitle": "Freagraí",
+    "loadingReplies": "Ag luchtú…",
+    "replyPlaceholder": "Scríobh freagra…",
+    "sending": "Ag seoladh…",
+    "noBody": "Gan ábhar",
+    "folder": "Fillteán:",
+    "unfiled": "— Gan fillteán —",
+    "foldersLabel": "Fillteáin",
+    "allNotesFilter": "Gach nóta",
+    "myNotes": "Mo nótaí",
+    "sharedFilter": "Roinnte",
+    "folderNamePlaceholder": "Ainm fillteáin",
+    "noteCountSingle": "1 nóta",
+    "noteCountPlural": "{count} nóta",
+    "compactTitle": "Nótaí ({count})",
+    "you": "Tú",
+    "unknown": "Anaithnid",
+    "justNow": "díreach anois",
+    "mAgo": "{count}n ó shin",
+    "hAgo": "{count}u ó shin",
+    "dAgo": "{count}l ó shin",
+    "selectNote": "Roghnaigh nóta chun é a léamh",
+    "deleteNoteTitle": "Scrios \"{title}\"?",
+    "deleteNoteMessage": "Scriosfar an nóta seo agus a chuid freagraí go buan.",
+    "deleteNoteLabel": "Scrios nóta",
+    "deleteFolderTitle": "Scrios fillteán \"{name}\"?",
+    "deleteFolderMessage": "Beidh nótaí sa fillteán seo gan fillteán ach ní scriosfar iad.",
+    "deleteFolderLabel": "Scrios fillteán"
+  }
+}

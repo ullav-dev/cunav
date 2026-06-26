@@ -1,0 +1,8 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+html,
+body,
+#__next {
+  height: 100%;
+}

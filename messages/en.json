@@ -1,0 +1,233 @@
+{
+  "localeSwitcher": {
+    "label": "Language",
+    "en": "English",
+    "de": "Deutsch",
+    "ga": "Gaeilge"
+  },
+  "nav": {
+    "tickets": "Tickets",
+    "triage": "Triage",
+    "queues": "Queues",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "myDetails": "My Details",
+    "about": "About Cunav"
+  },
+  "about": {
+    "tagline": "Customer Support",
+    "version": "Version",
+    "build": "Build",
+    "user": "Signed in as",
+    "support": "Support",
+    "contact": "Contact",
+    "close": "Close"
+  },
+  "idleWarning": {
+    "title": "You've been idle",
+    "message": "You will be logged out in {seconds} seconds.",
+    "stayLoggedIn": "Stay logged in",
+    "logoutNow": "Log out now"
+  },
+  "footer": {
+    "tagline": "Customer Support"
+  },
+  "status": {
+    "Not Started": "New",
+    "Ready": "Open",
+    "In Progress": "In Progress",
+    "On Hold": "On Hold",
+    "Complete": "Resolved",
+    "Cancelled": "Cancelled"
+  },
+  "priority": {
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low"
+  },
+  "ticketType": {
+    "bug": "Bug",
+    "feature": "Feature",
+    "question": "Question",
+    "improvement": "Improvement",
+    "task": "Task"
+  },
+  "confirmDialog": {
+    "cancel": "Cancel"
+  },
+  "visibility": {
+    "shared": "Shared with team",
+    "private": "Private"
+  },
+  "myDetails": {
+    "title": "My Details",
+    "avatarUrl": "Avatar URL",
+    "useGravatar": "Use Gravatar",
+    "generating": "Generating…",
+    "clear": "Clear",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "email": "Email",
+    "emailNote": "Contact support to change your email address.",
+    "cancel": "Cancel",
+    "saving": "Saving…",
+    "save": "Save changes"
+  },
+  "login": {
+    "appTagline": "Customer Support",
+    "emailLabel": "Email",
+    "passwordLabel": "Password",
+    "signIn": "Sign in",
+    "forgotPassword": "Forgot password?",
+    "pleaseWait": "Please wait…",
+    "resetPasswordTitle": "Reset password",
+    "sendResetLink": "Send reset link",
+    "backToSignIn": "Back to sign in",
+    "checkInbox": "Check your inbox for the password reset link.",
+    "errors": {
+      "serverError": "Server error. Please try again.",
+      "noAccess": "Your account does not have access to Cunav.",
+      "noAccessQuery": "Your account does not have access to Cunav. Ask your team owner to enable Cunav for your team.",
+      "loginFailed": "Login failed. Please check your credentials.",
+      "resetFailed": "Could not send reset link."
+    }
+  },
+  "tickets": {
+    "title": "Tickets",
+    "subtitle": "All support tickets across your teams",
+    "newTicket": "New ticket",
+    "loading": "Loading…",
+    "empty": "No tickets yet",
+    "emptySubtitle": "Create your first ticket to get started.",
+    "createTicket": "Create ticket",
+    "deleteConfirmTitle": "Delete ticket \"{name}\"?",
+    "deleteConfirmMessage": "This ticket and all its notes will be permanently deleted.",
+    "deleteConfirmLabel": "Delete ticket",
+    "filters": {
+      "all": "All",
+      "open": "Open",
+      "inProgress": "In Progress",
+      "resolved": "Resolved",
+      "myTickets": "My tickets"
+    },
+    "col": {
+      "id": "ID",
+      "type": "Type",
+      "priority": "Priority",
+      "title": "Title",
+      "status": "Status",
+      "assignee": "Assignee",
+      "queue": "Queue",
+      "created": "Created"
+    }
+  },
+  "ticket": {
+    "loading": "Loading…",
+    "notFound": "Ticket not found.",
+    "breadcrumbTickets": "Tickets",
+    "notesTitle": "Notes",
+    "tabDetails": "Details",
+    "tabTriage": "Triage",
+    "editDescription": "Edit description",
+    "addDescription": "Add a description…",
+    "assignee": "Assignee",
+    "unassigned": "Unassigned",
+    "reporter": "Reporter",
+    "queue": "Queue",
+    "noQueue": "No queue",
+    "created": "Created",
+    "updated": "Updated",
+    "assignToMe": "Assign to me",
+    "statusLabel": "Status",
+    "deleteConfirmTitle": "Delete this ticket?",
+    "deleteConfirmMessage": "This ticket and all its notes will be permanently deleted. This cannot be undone.",
+    "deleteConfirmLabel": "Delete ticket"
+  },
+  "triage": {
+    "title": "Triage",
+    "subtitle": "Review and categorise new tickets",
+    "statusNew": "New",
+    "statusOpen": "Open",
+    "showResolved": "Show all",
+    "allClear": "All clear",
+    "allClearSubtitle": "No new tickets awaiting triage.",
+    "colType": "Type",
+    "colPriority": "Priority",
+    "colStatus": "Status",
+    "colAge": "Age"
+  },
+  "queues": {
+    "title": "Queues",
+    "subtitle": "Manage support queues",
+    "newQueue": "New queue",
+    "loading": "Loading…",
+    "empty": "No queues yet",
+    "emptySubtitle": "Create a queue to organise tickets by category or team.",
+    "createQueue": "Create queue",
+    "deleteConfirmTitle": "Delete queue \"{name}\"?",
+    "deleteConfirmMessage": "Tickets in this queue will be unqueued but not deleted.",
+    "deleteConfirmLabel": "Delete queue",
+    "ticketCount": "{count} {count, plural, one {ticket} other {tickets}}",
+    "modal": {
+      "title": "New queue",
+      "nameLabel": "Queue name",
+      "namePlaceholder": "e.g. Bug Reports",
+      "teamLabel": "Team",
+      "teamPlaceholder": "— Select a team —",
+      "cancel": "Cancel",
+      "creating": "Creating…",
+      "create": "Create",
+      "error": "Failed to create queue"
+    }
+  },
+  "notes": {
+    "loading": "Loading notes…",
+    "retry": "Retry",
+    "newNote": "New note",
+    "editNoteTitle": "Edit note",
+    "newNoteTitle": "New note",
+    "titlePlaceholder": "Note title *",
+    "bodyPlaceholder": "Add details in markdown…",
+    "saving": "Saving…",
+    "save": "Save",
+    "cancel": "Cancel",
+    "saveFailed": "Save failed",
+    "backToList": "← Back to list",
+    "allNotes": "← All notes",
+    "noNotes": "No notes yet",
+    "addFirstNote": "Add the first note",
+    "shared": "Shared",
+    "private": "Private",
+    "sharedWithTeam": "Shared with team",
+    "reply": "+ Reply",
+    "repliesTitle": "Replies",
+    "loadingReplies": "Loading…",
+    "replyPlaceholder": "Write a reply…",
+    "sending": "Sending…",
+    "noBody": "No body",
+    "folder": "Folder:",
+    "unfiled": "— Unfiled —",
+    "foldersLabel": "Folders",
+    "allNotesFilter": "All notes",
+    "myNotes": "My notes",
+    "sharedFilter": "Shared",
+    "folderNamePlaceholder": "Folder name",
+    "noteCountSingle": "1 note",
+    "noteCountPlural": "{count} notes",
+    "compactTitle": "Notes ({count})",
+    "you": "You",
+    "unknown": "Unknown",
+    "justNow": "just now",
+    "mAgo": "{count}m ago",
+    "hAgo": "{count}h ago",
+    "dAgo": "{count}d ago",
+    "selectNote": "Select a note to read it",
+    "deleteNoteTitle": "Delete \"{title}\"?",
+    "deleteNoteMessage": "This note and all its replies will be permanently deleted.",
+    "deleteNoteLabel": "Delete note",
+    "deleteFolderTitle": "Delete folder \"{name}\"?",
+    "deleteFolderMessage": "Notes in this folder will be unfiled but not deleted.",
+    "deleteFolderLabel": "Delete folder"
+  }
+}

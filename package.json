@@ -1,0 +1,44 @@
+{
+  "name": "cunav",
+  "version": "26.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3008 --webpack",
+    "build": "next build",
+    "start": "next start --port 3008",
+    "lint": "eslint",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.0",
+    "@ai-sdk/react": "^4.0.2",
+    "@tailwindcss/typography": "^0.5.19",
+    "@uiw/react-md-editor": "^4.1.1",
+    "ai": "^7.0.2",
+    "next": "16.1.6",
+    "next-intl": "^4.9.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "overrides": {
+    "@swc/helpers": "0.5.23"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "jest": "^30.3.0",
+    "jest-environment-jsdom": "^30.3.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
