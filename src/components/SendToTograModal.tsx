@@ -16,6 +16,28 @@ interface Job {
   job_type: string;
 }
 
+interface WorkflowTypeOption {
+  value: string;
+  label: string;
+}
+
+const WORKFLOW_TYPES: WorkflowTypeOption[] = [
+  { value: "story",       label: "Story" },
+  { value: "bug",         label: "Bug" },
+  { value: "task",        label: "Task" },
+  { value: "improvement", label: "Improvement" },
+  { value: "question",    label: "Question" },
+];
+
+function defaultWorkflowType(ticketType: string | null | undefined): string {
+  if (ticketType === "feature")     return "story";
+  if (ticketType === "bug")         return "bug";
+  if (ticketType === "task")        return "task";
+  if (ticketType === "improvement") return "improvement";
+  if (ticketType === "question")    return "question";
+  return "story";
+}
+
 interface Props {
   ticket: Ticket;
   onClose: () => void;
@@ -28,6 +50,7 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>("");
   const [selectedJob, setSelectedJob] = useState<string>("");
+  const [workflowType, setWorkflowType] = useState<string>(() => defaultWorkflowType(ticket.ticket_type));
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [sending, setSending] = useState(false);
@@ -75,6 +98,7 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
         description: ticket.description ?? "",
         job_id: selectedJob,
         is_shared: true,
+        ticket_type: workflowType,
       };
       const res = await fetch("/api/workflows", {
         method: "POST",
@@ -127,6 +151,19 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
                   <option value="">— select a project —</option>
                   {projects.map((p) => (
                     <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">Workflow type</label>
+                <select
+                  value={workflowType}
+                  onChange={(e) => setWorkflowType(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                >
+                  {WORKFLOW_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
                   ))}
                 </select>
               </div>
