@@ -12,6 +12,7 @@
     "signIn": "Anmelden",
     "signOut": "Abmelden",
     "myDetails": "Meine Daten",
+    "settings": "Einstellungen",
     "about": "Über Cunav"
   },
   "about": {
@@ -180,6 +181,21 @@
       "create": "Erstellen",
       "error": "Warteschlange konnte nicht erstellt werden"
     }
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "subtitle": "KI-Assistent und Präferenzen konfigurieren",
+    "aiSection": "KI-Assistent",
+    "aiDescription": "Wählen Sie den KI-Anbieter und das Modell für das Triage-Panel. API-Schlüssel werden von Ihrem Administrator konfiguriert.",
+    "providerLabel": "Anbieter",
+    "modelLabel": "Modell",
+    "ollamaUrlLabel": "Ollama URL",
+    "ollamaLocalBadge": "Lokal",
+    "ollamaHint": "URL Ihres lokalen Ollama-Servers.",
+    "keyNote": "API-Schlüssel werden vom Administrator über Umgebungsvariablen gesetzt.",
+    "loading": "Laden…",
+    "save": "Präferenzen speichern",
+    "saved": "Gespeichert"
   },
   "notes": {
     "loading": "Notizen laden…",

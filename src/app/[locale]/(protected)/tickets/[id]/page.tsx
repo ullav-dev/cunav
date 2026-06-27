@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { getTicket, updateTicket, deleteTicket } from "@/lib/cunav-api";
+import { ticketId } from "@/lib/ticket-id";
 import { listQueues } from "@/lib/cunav-api";
 import { createNote } from "@/lib/notes-api";
 import { useRouter } from "@/i18n/navigation";
@@ -19,6 +20,7 @@ import NotesPanel from "@/components/notes/NotesPanel";
 import WikipediaExplorer from "@/components/WikipediaExplorer";
 import AiChatExplorer from "@/components/AiChatExplorer";
 import SendToTograModal from "@/components/SendToTograModal";
+import { useAppUrls } from "@/contexts/AppUrlsContext";
 import { useResize } from "@/hooks/useResize";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -32,7 +34,7 @@ function formatDate(iso: string): string {
 }
 
 type MainTab = "details" | "triage";
-type ExplorerTab = "wikipedia" | "ai";
+type ExplorerTab = "notes" | "ai" | "wikipedia";
 
 export default function TicketDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -54,9 +56,9 @@ export default function TicketDetailPage() {
   const [descDraft, setDescDraft] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [mainTab, setMainTab] = useState<MainTab>("details");
-  const [explorerTab, setExplorerTab] = useState<ExplorerTab>("wikipedia");
+  const [explorerTab, setExplorerTab] = useState<ExplorerTab>("notes");
   const [showSendToTogra, setShowSendToTogra] = useState(false);
-  const [tograSentInfo, setTograSentInfo] = useState<string | null>(null);
+  const { tograUrl } = useAppUrls();
   const titleRef = useRef<HTMLInputElement>(null);
   const rightResize = useResize({ initial: 380, min: 280, max: 600, axis: "x", reverse: true });
 
@@ -111,23 +113,33 @@ export default function TicketDetailPage() {
     router.push("/tickets");
   }
 
-  async function handleSaveAsNote(title: string, description: string, body: string) {
+  async function handleSaveAsNote(title: string, body: string, isShared = false) {
     if (!token || !ticket) return;
-    const noteBody = [description, body].filter(Boolean).join("\n\n");
-    await createNote(token, { entity_type: "workflow", entity_id: ticket.id, title, body: noteBody || undefined, is_shared: false });
+    await createNote(token, { entity_type: "workflow", entity_id: ticket.id, title, body: body || undefined, is_shared: isShared });
   }
 
-  async function handleTograSent(workflowId: string, project: string, job: string) {
+  async function handleTograSent(workflowId: string, projectId: string, project: string, job: string) {
     setShowSendToTogra(false);
-    setTograSentInfo(`Sent to ${project} › ${job}`);
-    if (token && ticket) {
+    if (!token || !ticket) return;
+    try {
+      await patch({
+        togra_workflow_id: workflowId,
+        togra_project_id: projectId,
+        status: "In Progress",
+      });
+      const tograStoryUrl = tograUrl ? `${tograUrl}/en/projects/${projectId}/stories/${workflowId}` : null;
       await createNote(token, {
         entity_type: "workflow",
         entity_id: ticket.id,
         title: `Sent to Togra: ${project} › ${job}`,
-        body: `Togra workflow ID: \`${workflowId}\``,
+        body: tograStoryUrl
+          ? `Story created in **${project}** › **${job}**.\n\n[View in Togra ↗](${tograStoryUrl})`
+          : `Story created in **${project}** › **${job}**. Togra workflow ID: \`${workflowId}\``,
         is_shared: true,
       });
+    } catch (err) {
+      console.error("handleTograSent failed:", err);
+      setError(`Sent to Togra but failed to update ticket: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -169,6 +181,8 @@ export default function TicketDetailPage() {
           <div className="flex items-center gap-2 min-w-0">
             <Link href="/tickets" className="text-sm text-slate-500 hover:text-violet-700 transition-colors shrink-0">{t("breadcrumbTickets")}</Link>
             <span className="text-slate-300">/</span>
+            <span className="text-sm font-mono text-violet-600 font-semibold shrink-0">{ticketId(ticket.ticket_number)}</span>
+            <span className="text-slate-300">/</span>
             <span className="text-sm text-slate-700 font-medium truncate">{ticket.name}</span>
             {saving && <span className="text-xs text-slate-400 ml-1 shrink-0">Saving…</span>}
           </div>
@@ -208,6 +222,7 @@ export default function TicketDetailPage() {
 
               {/* Metadata pills */}
               <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-mono font-semibold text-violet-600 bg-violet-50 border border-violet-200 rounded px-2 py-0.5">{ticketId(ticket.ticket_number)}</span>
                 <TicketTypeBadge type={ticket.ticket_type} />
                 <PriorityBadge priority={ticket.priority} />
                 <div className="relative">
@@ -272,6 +287,24 @@ export default function TicketDetailPage() {
                     </select>
                   </dd>
                 </div>
+                {ticket.togra_workflow_id && (
+                  <div className="col-span-2 pt-2 border-t border-slate-200">
+                    <dt className="text-xs text-slate-400 font-medium mb-1">Togra Story</dt>
+                    <dd>
+                      {tograUrl && ticket.togra_project_id ? (
+                        <button
+                          type="button"
+                          onClick={() => window.open(`${tograUrl}/en/projects/${ticket.togra_project_id}/stories/${ticket.togra_workflow_id}`, "togra-app")}
+                          className="text-sm text-violet-600 hover:underline text-left"
+                        >
+                          View story in Togra ↗
+                        </button>
+                      ) : (
+                        <span className="text-xs text-violet-500 font-mono">{ticket.togra_workflow_id}</span>
+                      )}
+                    </dd>
+                  </div>
+                )}
               </dl>
 
               {/* Description */}
@@ -318,8 +351,8 @@ export default function TicketDetailPage() {
             <div className="border-b border-slate-200 px-4 py-3 shrink-0">
               <h2 className="text-sm font-semibold text-slate-700">{t("notesTitle")}</h2>
             </div>
-            <div className="flex-1 overflow-y-auto px-4 py-3">
-              <NotesPanel entityType="workflow" entityId={ticket.id} isTeam />
+            <div className="flex-1 overflow-hidden min-h-0 px-4 py-3">
+              <NotesPanel entityType="workflow" entityId={ticket.id} isTeam folderOrientation="vertical" />
             </div>
           </div>
         </div>
@@ -387,9 +420,20 @@ export default function TicketDetailPage() {
             </div>
 
             <div className="border-t border-slate-100 pt-4 mt-auto">
-              {tograSentInfo ? (
-                <div className="text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
-                  {tograSentInfo}
+              {ticket.togra_workflow_id ? (
+                <div className="bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 space-y-1">
+                  <p className="text-xs font-medium text-violet-700">Sent to Togra</p>
+                  {tograUrl && ticket.togra_project_id ? (
+                    <button
+                      type="button"
+                      onClick={() => window.open(`${tograUrl}/en/projects/${ticket.togra_project_id}/stories/${ticket.togra_workflow_id}`, "togra-app")}
+                      className="text-xs text-violet-600 hover:underline text-left"
+                    >
+                      View story in Togra ↗
+                    </button>
+                  ) : (
+                    <p className="text-xs text-violet-500 font-mono truncate">{ticket.togra_workflow_id}</p>
+                  )}
                 </div>
               ) : (
                 <button
@@ -408,26 +452,35 @@ export default function TicketDetailPage() {
           {/* Right: explorer tabs */}
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-slate-50">
             <div className="border-b border-slate-200 bg-white flex px-4 gap-0 shrink-0">
-              {(["wikipedia", "ai"] as ExplorerTab[]).map((tab) => (
+              {([
+                { id: "notes", label: "Notes" },
+                { id: "ai", label: "AI Assistant" },
+                { id: "wikipedia", label: "Wikipedia" },
+              ] as { id: ExplorerTab; label: string }[]).map(({ id, label }) => (
                 <button
-                  key={tab}
-                  onClick={() => setExplorerTab(tab)}
+                  key={id}
+                  onClick={() => setExplorerTab(id)}
                   className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                    explorerTab === tab
+                    explorerTab === id
                       ? "border-violet-600 text-violet-700"
                       : "border-transparent text-slate-500 hover:text-slate-700"
                   }`}
                 >
-                  {tab === "wikipedia" ? "Wikipedia" : "AI Assistant"}
+                  {label}
                 </button>
               ))}
             </div>
-            <div className="flex-1 overflow-hidden p-4">
-              {explorerTab === "wikipedia" && (
-                <WikipediaExplorer initialQuery={ticket.name} onSaveAsNote={handleSaveAsNote} />
+            <div className="flex-1 overflow-hidden p-4 flex flex-col min-h-0">
+              {explorerTab === "notes" && (
+                <div className="flex-1 min-h-0">
+                  <NotesPanel entityType="workflow" entityId={ticket.id} isTeam twoColumn />
+                </div>
               )}
               {explorerTab === "ai" && (
-                <AiChatExplorer ticket={ticket} />
+                <AiChatExplorer ticket={ticket} onSaveAsNote={handleSaveAsNote} />
+              )}
+              {explorerTab === "wikipedia" && (
+                <WikipediaExplorer onSaveAsNote={handleSaveAsNote} />
               )}
             </div>
           </div>

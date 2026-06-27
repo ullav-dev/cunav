@@ -72,7 +72,11 @@ AUTH_URL=http://localhost:8081         # ullav-user-management
 TOGRA_URL=http://localhost:3007        # Togra app (for SSO cross-link)
 OBAIR_URL=http://localhost:3000        # Obair/AWE app
 DAM_BROWSER_URL=http://localhost:3004  # DAM browser
-ANTHROPIC_API_KEY=                    # required for AI Assistant in Triage tab (/api/ai/chat)
+ANTHROPIC_API_KEY=                    # AI provider: Anthropic (any one or more required)
+OPENAI_API_KEY=                       # AI provider: OpenAI
+GOOGLE_AI_API_KEY=                    # AI provider: Google
+MISTRAL_API_KEY=                      # AI provider: Mistral
+OLLAMA_URL=http://localhost:11434     # AI provider: Ollama (default, optional)
 
 # Build-time (baked by next.config.ts)
 NEXT_PUBLIC_APP_VERSION=              # set by build

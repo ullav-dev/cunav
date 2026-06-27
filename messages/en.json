@@ -12,6 +12,7 @@
     "signIn": "Sign in",
     "signOut": "Sign out",
     "myDetails": "My Details",
+    "settings": "Settings",
     "about": "About Cunav"
   },
   "about": {
@@ -180,6 +181,21 @@
       "create": "Create",
       "error": "Failed to create queue"
     }
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Configure your AI assistant and preferences",
+    "aiSection": "AI Assistant",
+    "aiDescription": "Choose which AI provider and model to use in the Triage panel. API keys are configured by your administrator.",
+    "providerLabel": "Provider",
+    "modelLabel": "Model",
+    "ollamaUrlLabel": "Ollama URL",
+    "ollamaLocalBadge": "Local",
+    "ollamaHint": "URL of your local Ollama server.",
+    "keyNote": "API keys are set by your administrator via environment variables. Contact your admin to enable a provider.",
+    "loading": "Loading…",
+    "save": "Save preferences",
+    "saved": "Saved"
   },
   "notes": {
     "loading": "Loading notes…",

@@ -91,6 +91,9 @@ export interface Workflow {
   is_shared: boolean;
   sort_order: number | null;
   story_points: number | null;
+  togra_workflow_id: string | null;
+  togra_project_id: string | null;
+  ticket_number: number | null;
 }
 
 // ── Cunav-specific ticket extensions ─────────────────────────────────────────
