@@ -18,16 +18,6 @@ import MarkdownEditor from "@/components/MarkdownEditor";
 
 const PAGE_SIZE = 25;
 
-function Avatar({ name, url }: { name: string; url?: string | null }) {
-  const [broken, setBroken] = useState(false);
-  if (url && !broken) return <img src={url} alt={name} title={name} className="w-6 h-6 rounded-full object-cover" onError={() => setBroken(true)} />;
-  return (
-    <span title={name} className="w-6 h-6 rounded-full bg-violet-100 text-violet-700 text-[10px] font-bold flex items-center justify-center select-none">
-      {name.charAt(0).toUpperCase()}
-    </span>
-  );
-}
-
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
     year: "numeric", month: "short", day: "numeric",
@@ -165,6 +155,23 @@ function CreateTicketModal({ queues, defaultQueueId, teamIds, onClose, onCreated
   );
 }
 
+function SortableTh({ field, label, className, sortField, sortDir, onSort }: {
+  field: SortField; label: string; className?: string;
+  sortField: SortField; sortDir: SortDir; onSort: (f: SortField) => void;
+}) {
+  return (
+    <th
+      className={`text-left px-2 py-3 text-xs font-semibold text-slate-500 cursor-pointer hover:text-slate-800 select-none whitespace-nowrap ${className ?? ""}`}
+      onClick={() => onSort(field)}
+    >
+      <span className="inline-flex items-center gap-0.5">
+        {label}
+        <SortIcon field={field} sortField={sortField} sortDir={sortDir} />
+      </span>
+    </th>
+  );
+}
+
 function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: SortField; sortDir: SortDir }) {
   if (field !== sortField) return <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-slate-300 ml-1"><path d="M4 5h8M4 8h6M4 11h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>;
   return sortDir === "asc"
@@ -284,18 +291,6 @@ export default function TicketsPage() {
 
   const activeQueue = queues.find((q) => q.id === selectedQueueId);
   const statusFilters: StatusFilter[] = ["all", "open", "inProgress", "resolved", "myTickets"];
-
-  const SortableTh = ({ field, label, className }: { field: SortField; label: string; className?: string }) => (
-    <th
-      className={`text-left px-2 py-3 text-xs font-semibold text-slate-500 cursor-pointer hover:text-slate-800 select-none whitespace-nowrap ${className ?? ""}`}
-      onClick={() => handleSortClick(field)}
-    >
-      <span className="inline-flex items-center gap-0.5">
-        {label}
-        <SortIcon field={field} sortField={sortField} sortDir={sortDir} />
-      </span>
-    </th>
-  );
 
   return (
     <div className="flex-1 flex min-h-0">
@@ -447,11 +442,11 @@ export default function TicketsPage() {
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 sticky top-0">
                       <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 w-12">{t("col.id")}</th>
-                      <SortableTh field="type" label={t("col.type")} className="w-24" />
-                      <SortableTh field="priority" label={t("col.priority")} className="w-24" />
+                      <SortableTh field="type" label={t("col.type")} className="w-24" sortField={sortField} sortDir={sortDir} onSort={handleSortClick} />
+                      <SortableTh field="priority" label={t("col.priority")} className="w-24" sortField={sortField} sortDir={sortDir} onSort={handleSortClick} />
                       <th className="text-left px-2 py-3 text-xs font-semibold text-slate-500">{t("col.title")}</th>
-                      <SortableTh field="status" label={t("col.status")} className="w-28" />
-                      <SortableTh field="created" label={t("col.created")} className="w-36" />
+                      <SortableTh field="status" label={t("col.status")} className="w-28" sortField={sortField} sortDir={sortDir} onSort={handleSortClick} />
+                      <SortableTh field="created" label={t("col.created")} className="w-36" sortField={sortField} sortDir={sortDir} onSort={handleSortClick} />
                       <th className="w-10" />
                     </tr>
                   </thead>

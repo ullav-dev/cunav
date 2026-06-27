@@ -1,16 +1,14 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+import nextConfig from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
-const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+export default [
+  ...nextConfig,
+  ...nextTs,
+  {
+    rules: {
+      // React 19 strict rules — flag common valid patterns in this codebase
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/refs": "off",
+    },
+  },
 ];
-
-export default eslintConfig;

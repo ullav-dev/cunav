@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { hasCunavAccess } from "@/lib/auth-api";
 import type { AuthUser } from "@/lib/auth-api";
@@ -41,9 +42,9 @@ export default function SsoPage() {
         {error ? (
           <div className="max-w-sm">
             <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3 border border-red-200">{error}</p>
-            <a href="/en/login" className="block mt-3 text-sm text-violet-700 hover:text-violet-800 font-medium">
+            <Link href="/en/login" className="block mt-3 text-sm text-violet-700 hover:text-violet-800 font-medium">
               Back to login
-            </a>
+            </Link>
           </div>
         ) : (
           <p className="text-sm text-slate-500">Signing you in…</p>
