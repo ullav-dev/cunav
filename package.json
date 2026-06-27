@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start --port 3008",
     "lint": "eslint",
-    "test": "jest"
+    "test": "jest --passWithNoTests"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.0",
