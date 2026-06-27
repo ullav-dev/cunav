@@ -188,16 +188,26 @@ export default function TicketsPage() {
   const searchParams = useSearchParams();
   const selectedQueueId = searchParams.get("queue") ?? "";
 
+  // Persist filter/sort/queue prefs across sessions
+  const PREFS_KEY = "cunav_tickets_prefs";
+  function loadPrefs(): { statusFilter: StatusFilter; typeFilter: TicketType | ""; priorityFilter: Priority | ""; sortField: SortField; sortDir: SortDir; queue: string } {
+    try { return { statusFilter: "open", typeFilter: "", priorityFilter: "", sortField: "updated", sortDir: "desc", queue: "", ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") }; }
+    catch { return { statusFilter: "open", typeFilter: "", priorityFilter: "", sortField: "updated", sortDir: "desc", queue: "" }; }
+  }
+  function savePrefs(patch: Partial<ReturnType<typeof loadPrefs>>) {
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify({ ...loadPrefs(), ...patch })); } catch { /* */ }
+  }
+
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [queues, setQueues] = useState<Queue[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
-  const [typeFilter, setTypeFilter] = useState<TicketType | "">("");
-  const [priorityFilter, setPriorityFilter] = useState<Priority | "">("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => loadPrefs().statusFilter);
+  const [typeFilter, setTypeFilter] = useState<TicketType | "">(() => loadPrefs().typeFilter);
+  const [priorityFilter, setPriorityFilter] = useState<Priority | "">(() => loadPrefs().priorityFilter);
   const [search, setSearch] = useState("");
-  const [sortField, setSortField] = useState<SortField>("updated");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [sortField, setSortField] = useState<SortField>(() => loadPrefs().sortField);
+  const [sortDir, setSortDir] = useState<SortDir>(() => loadPrefs().sortDir);
   const [autoRefreshMs, setAutoRefreshMs] = useState<number | null>(() => {
     try {
       const stored = localStorage.getItem("cunav_refresh_interval");
@@ -231,6 +241,21 @@ export default function TicketsPage() {
   useEffect(() => { load(); }, [load]);
   useInterval(load, autoRefreshMs);
 
+  // Restore saved queue selection on first mount (if URL has no ?queue= param)
+  useEffect(() => {
+    if (!selectedQueueId) {
+      const saved = loadPrefs().queue;
+      if (saved) router.replace(`/tickets?queue=${saved}`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist filter/sort/queue prefs whenever they change
+  useEffect(() => {
+    savePrefs({ statusFilter, typeFilter, priorityFilter, sortField, sortDir, queue: selectedQueueId });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, typeFilter, priorityFilter, sortField, sortDir, selectedQueueId]);
+
   // Reset to page 1 when filters/queue/search change
   useEffect(() => { setPage(1); }, [selectedQueueId, statusFilter, typeFilter, priorityFilter, search, sortField, sortDir]);
 
@@ -244,6 +269,7 @@ export default function TicketsPage() {
   }
 
   function selectQueue(id: string) {
+    savePrefs({ queue: id });
     if (id) {
       router.push(`/tickets?queue=${id}`);
     } else {
