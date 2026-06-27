@@ -130,7 +130,15 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
     try {
       const cunávUrl = window.location.origin;
       const backlink = `\n\n---\n*Cunav ticket: [${ticket.name}](${cunávUrl}/en/tickets/${ticket.id})*`;
-      const enrichedDescription = (ticket.description ?? "") + backlink;
+      // Normalise description: ATX headings must start at column 0 (CommonMark §4.2).
+      // Some editors (uiw/react-md-editor) can store headings with leading whitespace,
+      // which causes parsers to treat them as indented code blocks instead of headings.
+      const normalised = (ticket.description ?? "")
+        .split("\n")
+        .map((line) => (/^\s+#{1,6}(\s|$)/.test(line) ? line.trimStart() : line))
+        .join("\n")
+        .trim();
+      const enrichedDescription = normalised + backlink;
 
       let created;
       if (!noTemplate && selectedTemplate) {
