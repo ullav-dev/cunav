@@ -198,7 +198,12 @@ export default function TicketsPage() {
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<SortField>("updated");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [autoRefreshMs, setAutoRefreshMs] = useState<number | null>(null);
+  const [autoRefreshMs, setAutoRefreshMs] = useState<number | null>(() => {
+    try {
+      const stored = localStorage.getItem("cunav_refresh_interval");
+      return stored ? Number(stored) : null;
+    } catch { return null; }
+  });
   const [showCreate, setShowCreate] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Ticket | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -403,7 +408,14 @@ export default function TicketsPage() {
                   <path d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z"/>
                 </svg>
               </button>
-              <select value={autoRefreshMs ?? ""} onChange={(e) => setAutoRefreshMs(e.target.value ? Number(e.target.value) : null)}
+              <select value={autoRefreshMs ?? ""} onChange={(e) => {
+                const val = e.target.value ? Number(e.target.value) : null;
+                setAutoRefreshMs(val);
+                try {
+                  if (val) localStorage.setItem("cunav_refresh_interval", String(val));
+                  else localStorage.removeItem("cunav_refresh_interval");
+                } catch { /* storage unavailable */ }
+              }}
                 className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:border-violet-400 focus:outline-none bg-white text-slate-600" title="Auto-refresh">
                 {REFRESH_OPTIONS.map((o) => <option key={o.label} value={o.ms ?? ""}>{o.label}</option>)}
               </select>
