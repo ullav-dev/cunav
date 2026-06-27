@@ -120,7 +120,8 @@
       "status": "Stádas",
       "assignee": "Sannadh chuig",
       "queue": "Scuaine",
-      "created": "Cruthaithe"
+      "created": "Cruthaithe",
+      "updated": "Nuashonraithe"
     }
   },
   "ticket": {

@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { listTickets, createTicket, deleteTicket, filterCunavTickets, listQueues } from "@/lib/cunav-api";
 import { getAweTeamIds } from "@/lib/auth-api";
 import { ticketId } from "@/lib/ticket-id";
+import { hasUnread } from "@/lib/last-read";
 import { useInterval } from "@/hooks/useInterval";
 import type { Ticket, Queue, Status, TicketType, Priority } from "@/lib/types";
 import StatusPill from "@/components/StatusPill";
@@ -26,7 +27,7 @@ function formatDateTime(iso: string): string {
 }
 
 type StatusFilter = "all" | "open" | "inProgress" | "resolved" | "myTickets";
-type SortField = "type" | "priority" | "status" | "created";
+type SortField = "type" | "priority" | "status" | "created" | "updated";
 type SortDir = "asc" | "desc";
 
 const STATUS_FILTER_MAP: Record<StatusFilter, Status[] | null> = {
@@ -195,7 +196,7 @@ export default function TicketsPage() {
   const [typeFilter, setTypeFilter] = useState<TicketType | "">("");
   const [priorityFilter, setPriorityFilter] = useState<Priority | "">("");
   const [search, setSearch] = useState("");
-  const [sortField, setSortField] = useState<SortField>("created");
+  const [sortField, setSortField] = useState<SortField>("updated");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [autoRefreshMs, setAutoRefreshMs] = useState<number | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -233,7 +234,7 @@ export default function TicketsPage() {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortField(field);
-      setSortDir(field === "created" ? "desc" : "asc");
+      setSortDir(field === "created" || field === "updated" ? "desc" : "asc");
     }
   }
 
@@ -271,6 +272,7 @@ export default function TicketsPage() {
       if (sortField === "type") cmp = (a.ticket_type ?? "").localeCompare(b.ticket_type ?? "");
       else if (sortField === "priority") cmp = (PRIORITY_WEIGHT[a.priority ?? ""] ?? 99) - (PRIORITY_WEIGHT[b.priority ?? ""] ?? 99);
       else if (sortField === "status") cmp = a.status.localeCompare(b.status);
+      else if (sortField === "updated") cmp = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
       else cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       return sortDir === "asc" ? cmp : -cmp;
     });
@@ -446,22 +448,31 @@ export default function TicketsPage() {
                       <SortableTh field="priority" label={t("col.priority")} className="w-24" sortField={sortField} sortDir={sortDir} onSort={handleSortClick} />
                       <th className="text-left px-2 py-3 text-xs font-semibold text-slate-500">{t("col.title")}</th>
                       <SortableTh field="status" label={t("col.status")} className="w-28" sortField={sortField} sortDir={sortDir} onSort={handleSortClick} />
+                      <SortableTh field="updated" label={t("col.updated")} className="w-36" sortField={sortField} sortDir={sortDir} onSort={handleSortClick} />
                       <SortableTh field="created" label={t("col.created")} className="w-36" sortField={sortField} sortDir={sortDir} onSort={handleSortClick} />
                       <th className="w-10" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {pagedTickets.map((ticket) => (
+                    {pagedTickets.map((ticket) => {
+                      const unread = hasUnread(ticket.id, ticket.updated_at);
+                      return (
                       <tr key={ticket.id} className="hover:bg-slate-50 transition-colors group">
                         <td className="px-4 py-3 text-xs font-mono text-slate-500 whitespace-nowrap font-medium">{ticketId(ticket.ticket_number)}</td>
                         <td className="px-2 py-3"><TicketTypeBadge type={ticket.ticket_type} /></td>
                         <td className="px-2 py-3"><PriorityBadge priority={ticket.priority} /></td>
                         <td className="px-2 py-3">
-                          <Link href={`/tickets/${ticket.id}`} className="font-medium text-slate-800 hover:text-violet-700 transition-colors text-sm leading-snug line-clamp-2">
-                            {ticket.name}
-                          </Link>
+                          <div className="flex items-start gap-1.5">
+                            {unread && (
+                              <span title="New activity" className="mt-1.5 flex-shrink-0 w-2 h-2 rounded-full bg-amber-400" />
+                            )}
+                            <Link href={`/tickets/${ticket.id}`} className="font-medium text-slate-800 hover:text-violet-700 transition-colors text-sm leading-snug line-clamp-2">
+                              {ticket.name}
+                            </Link>
+                          </div>
                         </td>
                         <td className="px-2 py-3"><StatusPill status={ticket.status} /></td>
+                        <td className="px-2 py-3 text-xs text-slate-400 whitespace-nowrap">{formatDateTime(ticket.updated_at)}</td>
                         <td className="px-2 py-3 text-xs text-slate-400 whitespace-nowrap">{formatDateTime(ticket.created_at)}</td>
                         <td className="px-2 py-3">
                           <button onClick={() => setConfirmDelete(ticket)}
@@ -473,7 +484,7 @@ export default function TicketsPage() {
                           </button>
                         </td>
                       </tr>
-                    ))}
+                    );})}
                   </tbody>
                 </table>
               </div>

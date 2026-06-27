@@ -120,7 +120,8 @@
       "status": "Status",
       "assignee": "Assignee",
       "queue": "Queue",
-      "created": "Created"
+      "created": "Created",
+      "updated": "Updated"
     }
   },
   "ticket": {
