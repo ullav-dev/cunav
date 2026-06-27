@@ -1,3 +1,5 @@
+# Runs lint + tests on every PR targeting main.
+# Docker build + push to GHCR runs on merge to main only (push event).
 name: build_deploy
 
 on:
