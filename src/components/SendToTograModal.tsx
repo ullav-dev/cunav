@@ -96,8 +96,8 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
     setLoadingTemplates(true);
     fetch(`/api/workflows?team_id=${teamId}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((data: WorkflowTemplate[] & { is_template?: boolean }[]) => {
-        const list = (Array.isArray(data) ? data : []).filter((w: { is_template?: boolean }) => w.is_template);
+      .then((data: (WorkflowTemplate & { is_template?: boolean })[]) => {
+        const list = (Array.isArray(data) ? data : []).filter((w) => w.is_template) as WorkflowTemplate[];
         setTemplates(list);
         // Auto-select a template matching the ticket type
         const hint = ticket.ticket_type ?? "";
