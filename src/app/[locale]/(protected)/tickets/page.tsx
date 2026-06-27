@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { listTickets, createTicket, deleteTicket, filterCunavTickets, listQueues } from "@/lib/cunav-api";
 import { getAweTeamIds } from "@/lib/auth-api";
+import { ticketId } from "@/lib/ticket-id";
 import { useInterval } from "@/hooks/useInterval";
 import type { Ticket, Queue, Status, TicketType, Priority } from "@/lib/types";
 import StatusPill from "@/components/StatusPill";
@@ -255,7 +256,7 @@ export default function TicketsPage() {
       })();
       const typeMatch = !typeFilter || ticket.ticket_type === typeFilter;
       const priorityMatch = !priorityFilter || ticket.priority === priorityFilter;
-      const searchMatch = !q || ticket.name.toLowerCase().includes(q) || (ticket.description ?? "").toLowerCase().includes(q);
+      const searchMatch = !q || ticket.name.toLowerCase().includes(q) || (ticket.description ?? "").toLowerCase().includes(q) || ticketId(ticket.ticket_number).toLowerCase().includes(q);
       return statusMatch && typeMatch && priorityMatch && searchMatch;
     })
     .sort((a, b) => {
@@ -457,7 +458,7 @@ export default function TicketsPage() {
                   <tbody className="divide-y divide-slate-100">
                     {pagedTickets.map((ticket) => (
                       <tr key={ticket.id} className="hover:bg-slate-50 transition-colors group">
-                        <td className="px-4 py-3 text-xs font-mono text-slate-400">{ticket.id.slice(0, 6)}</td>
+                        <td className="px-4 py-3 text-xs font-mono text-slate-500 whitespace-nowrap font-medium">{ticketId(ticket.ticket_number)}</td>
                         <td className="px-2 py-3"><TicketTypeBadge type={ticket.ticket_type} /></td>
                         <td className="px-2 py-3"><PriorityBadge priority={ticket.priority} /></td>
                         <td className="px-2 py-3">

@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { getTicket, updateTicket, deleteTicket } from "@/lib/cunav-api";
+import { ticketId } from "@/lib/ticket-id";
 import { listQueues } from "@/lib/cunav-api";
 import { createNote } from "@/lib/notes-api";
 import { useRouter } from "@/i18n/navigation";
@@ -180,6 +181,8 @@ export default function TicketDetailPage() {
           <div className="flex items-center gap-2 min-w-0">
             <Link href="/tickets" className="text-sm text-slate-500 hover:text-violet-700 transition-colors shrink-0">{t("breadcrumbTickets")}</Link>
             <span className="text-slate-300">/</span>
+            <span className="text-sm font-mono text-violet-600 font-semibold shrink-0">{ticketId(ticket.ticket_number)}</span>
+            <span className="text-slate-300">/</span>
             <span className="text-sm text-slate-700 font-medium truncate">{ticket.name}</span>
             {saving && <span className="text-xs text-slate-400 ml-1 shrink-0">Saving…</span>}
           </div>
@@ -219,6 +222,7 @@ export default function TicketDetailPage() {
 
               {/* Metadata pills */}
               <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-mono font-semibold text-violet-600 bg-violet-50 border border-violet-200 rounded px-2 py-0.5">{ticketId(ticket.ticket_number)}</span>
                 <TicketTypeBadge type={ticket.ticket_type} />
                 <PriorityBadge priority={ticket.priority} />
                 <div className="relative">
