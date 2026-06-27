@@ -3,6 +3,8 @@ name: build_deploy
 on:
   push:
     branches: main
+  pull_request:
+    branches: main
 
 jobs:
   test:
@@ -24,6 +26,7 @@ jobs:
 
   docker:
     needs: test
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
