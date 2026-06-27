@@ -259,7 +259,7 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
                       <span className="text-xs text-slate-400">Loading templates…</span>
                     </div>
                   ) : templates.length === 0 ? (
-                    <p className="text-xs text-slate-400 italic">No templates defined for this project's team — workflow will be created blank.</p>
+                    <p className="text-xs text-slate-400 italic">No templates defined for this project&apos;s team — workflow will be created blank.</p>
                   ) : (
                     <>
                       {/* Searchable combobox */}
