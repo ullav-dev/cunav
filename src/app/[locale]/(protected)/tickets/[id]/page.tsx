@@ -7,6 +7,7 @@ import { Link } from "@/i18n/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { getTicket, updateTicket, deleteTicket } from "@/lib/cunav-api";
 import { ticketId } from "@/lib/ticket-id";
+import { markRead } from "@/lib/last-read";
 import { listQueues } from "@/lib/cunav-api";
 import { createNote } from "@/lib/notes-api";
 import { useRouter } from "@/i18n/navigation";
@@ -72,6 +73,7 @@ export default function TicketDetailPage() {
       ]);
       setTicket(ticketData);
       setQueues(queuesData);
+      markRead(ticketData.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load ticket");
     } finally {

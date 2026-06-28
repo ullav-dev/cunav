@@ -120,7 +120,8 @@
       "status": "Status",
       "assignee": "Bearbeiter",
       "queue": "Warteschlange",
-      "created": "Erstellt"
+      "created": "Erstellt",
+      "updated": "Aktualisiert"
     }
   },
   "ticket": {

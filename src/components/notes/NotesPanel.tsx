@@ -15,6 +15,7 @@ import {
   listNoteFolders, createNoteFolder, updateNoteFolder, deleteNoteFolder,
 } from "@/lib/notes-api";
 import type { Note, NoteFolder, NoteEntityType } from "@/lib/types";
+import { markNoteRead, isNoteUnread } from "@/lib/last-read";
 
 function formatRelative(iso: string, t: (key: string, params?: Record<string, string | number | Date>) => string): string {
   try {
@@ -292,7 +293,7 @@ export default function NotesPanel({ entityType, entityId, isTeam, compact = fal
 
   function handleSelect(id: string) {
     if (selectedId === id && mode === "view") { setSelectedId(null); setMode("list"); }
-    else { setSelectedId(id); setMode("view"); }
+    else { setSelectedId(id); setMode("view"); markNoteRead(id); }
   }
 
   async function handleCreate(title: string, body: string, isShared: boolean) {
@@ -304,6 +305,7 @@ export default function NotesPanel({ entityType, entityId, isTeam, compact = fal
       const note = await createNote(token, { entity_type: entityType, entity_id: entityId, title, body: body || undefined, is_shared: isShared });
       const finalNote = folderId ? await moveNote(token, note.id, folderId) : note;
       setNotes((prev) => [finalNote, ...prev]);
+      markNoteRead(finalNote.id); // own notes are always read
       setSelectedId(finalNote.id); setMode("view");
     } finally { setSaving(false); }
   }
@@ -371,7 +373,7 @@ export default function NotesPanel({ entityType, entityId, isTeam, compact = fal
     return all;
   };
   const visibleNotes = filterNotes(topLevel)
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
   if (loading) return <div className="text-sm text-slate-400 py-6 text-center">{t("loading")}</div>;
   if (error) return (
@@ -416,17 +418,21 @@ export default function NotesPanel({ entityType, entityId, isTeam, compact = fal
       ) : (
         visibleNotes.map((note) => {
           const folderName = !compact ? folders.find((f) => f.id === note.folder_id)?.name : undefined;
+          const unread = isNoteUnread(note.id);
           return (
             <button key={note.id} onClick={() => handleSelect(note.id)}
-              className={`w-full text-left rounded-lg border p-3 transition-colors ${selectedId === note.id ? "border-violet-300 bg-violet-50" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}>
+              className={`w-full text-left rounded-lg border p-3 transition-colors ${selectedId === note.id ? "border-violet-300 bg-violet-50" : unread ? "border-amber-200 bg-amber-50 hover:border-amber-300" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}>
               <div className="flex items-start justify-between gap-2">
-                <span className="font-medium text-slate-800 text-sm truncate">{note.title}</span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  {unread && <span className="flex-shrink-0 w-2 h-2 rounded-full bg-amber-400 mt-0.5" title="Unread" />}
+                  <span className={`text-sm truncate ${unread ? "font-semibold text-slate-900" : "font-medium text-slate-800"}`}>{note.title}</span>
+                </div>
                 <span className="text-[10px] shrink-0">{note.is_shared ? "👥" : "🔒"}</span>
               </div>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-[10px] text-slate-400">{resolveCreator(note.created_by)}</span>
                 <span className="text-[10px] text-slate-300">·</span>
-                <span className="text-[10px] text-slate-400">{formatRelative(note.updated_at, t)}</span>
+                <span className={`text-[10px] ${unread ? "text-amber-600 font-medium" : "text-slate-400"}`}>{formatRelative(note.updated_at, t)}</span>
                 {folderName && <><span className="text-[10px] text-slate-300">·</span><span className="text-[10px] text-slate-400">📁 {folderName}</span></>}
               </div>
             </button>

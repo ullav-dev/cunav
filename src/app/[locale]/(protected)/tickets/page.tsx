@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { listTickets, createTicket, deleteTicket, filterCunavTickets, listQueues } from "@/lib/cunav-api";
 import { getAweTeamIds } from "@/lib/auth-api";
 import { ticketId } from "@/lib/ticket-id";
+import { hasUnread } from "@/lib/last-read";
 import { useInterval } from "@/hooks/useInterval";
 import type { Ticket, Queue, Status, TicketType, Priority } from "@/lib/types";
 import StatusPill from "@/components/StatusPill";
@@ -26,7 +27,7 @@ function formatDateTime(iso: string): string {
 }
 
 type StatusFilter = "all" | "open" | "inProgress" | "resolved" | "myTickets";
-type SortField = "type" | "priority" | "status" | "created";
+type SortField = "type" | "priority" | "status" | "created" | "updated";
 type SortDir = "asc" | "desc";
 
 const STATUS_FILTER_MAP: Record<StatusFilter, Status[] | null> = {
@@ -187,17 +188,32 @@ export default function TicketsPage() {
   const searchParams = useSearchParams();
   const selectedQueueId = searchParams.get("queue") ?? "";
 
+  // Persist filter/sort/queue prefs across sessions
+  const PREFS_KEY = "cunav_tickets_prefs";
+  function loadPrefs(): { statusFilter: StatusFilter; typeFilter: TicketType | ""; priorityFilter: Priority | ""; sortField: SortField; sortDir: SortDir; queue: string } {
+    try { return { statusFilter: "open", typeFilter: "", priorityFilter: "", sortField: "updated", sortDir: "desc", queue: "", ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") }; }
+    catch { return { statusFilter: "open", typeFilter: "", priorityFilter: "", sortField: "updated", sortDir: "desc", queue: "" }; }
+  }
+  function savePrefs(patch: Partial<ReturnType<typeof loadPrefs>>) {
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify({ ...loadPrefs(), ...patch })); } catch { /* */ }
+  }
+
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [queues, setQueues] = useState<Queue[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
-  const [typeFilter, setTypeFilter] = useState<TicketType | "">("");
-  const [priorityFilter, setPriorityFilter] = useState<Priority | "">("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => loadPrefs().statusFilter);
+  const [typeFilter, setTypeFilter] = useState<TicketType | "">(() => loadPrefs().typeFilter);
+  const [priorityFilter, setPriorityFilter] = useState<Priority | "">(() => loadPrefs().priorityFilter);
   const [search, setSearch] = useState("");
-  const [sortField, setSortField] = useState<SortField>("created");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [autoRefreshMs, setAutoRefreshMs] = useState<number | null>(null);
+  const [sortField, setSortField] = useState<SortField>(() => loadPrefs().sortField);
+  const [sortDir, setSortDir] = useState<SortDir>(() => loadPrefs().sortDir);
+  const [autoRefreshMs, setAutoRefreshMs] = useState<number | null>(() => {
+    try {
+      const stored = localStorage.getItem("cunav_refresh_interval");
+      return stored ? Number(stored) : null;
+    } catch { return null; }
+  });
   const [showCreate, setShowCreate] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Ticket | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -225,6 +241,21 @@ export default function TicketsPage() {
   useEffect(() => { load(); }, [load]);
   useInterval(load, autoRefreshMs);
 
+  // Restore saved queue selection on first mount (if URL has no ?queue= param)
+  useEffect(() => {
+    if (!selectedQueueId) {
+      const saved = loadPrefs().queue;
+      if (saved) router.replace(`/tickets?queue=${saved}`);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist filter/sort/queue prefs whenever they change
+  useEffect(() => {
+    savePrefs({ statusFilter, typeFilter, priorityFilter, sortField, sortDir, queue: selectedQueueId });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, typeFilter, priorityFilter, sortField, sortDir, selectedQueueId]);
+
   // Reset to page 1 when filters/queue/search change
   useEffect(() => { setPage(1); }, [selectedQueueId, statusFilter, typeFilter, priorityFilter, search, sortField, sortDir]);
 
@@ -233,11 +264,12 @@ export default function TicketsPage() {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortField(field);
-      setSortDir(field === "created" ? "desc" : "asc");
+      setSortDir(field === "created" || field === "updated" ? "desc" : "asc");
     }
   }
 
   function selectQueue(id: string) {
+    savePrefs({ queue: id });
     if (id) {
       router.push(`/tickets?queue=${id}`);
     } else {
@@ -271,6 +303,7 @@ export default function TicketsPage() {
       if (sortField === "type") cmp = (a.ticket_type ?? "").localeCompare(b.ticket_type ?? "");
       else if (sortField === "priority") cmp = (PRIORITY_WEIGHT[a.priority ?? ""] ?? 99) - (PRIORITY_WEIGHT[b.priority ?? ""] ?? 99);
       else if (sortField === "status") cmp = a.status.localeCompare(b.status);
+      else if (sortField === "updated") cmp = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
       else cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       return sortDir === "asc" ? cmp : -cmp;
     });
@@ -401,7 +434,14 @@ export default function TicketsPage() {
                   <path d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z"/>
                 </svg>
               </button>
-              <select value={autoRefreshMs ?? ""} onChange={(e) => setAutoRefreshMs(e.target.value ? Number(e.target.value) : null)}
+              <select value={autoRefreshMs ?? ""} onChange={(e) => {
+                const val = e.target.value ? Number(e.target.value) : null;
+                setAutoRefreshMs(val);
+                try {
+                  if (val) localStorage.setItem("cunav_refresh_interval", String(val));
+                  else localStorage.removeItem("cunav_refresh_interval");
+                } catch { /* storage unavailable */ }
+              }}
                 className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:border-violet-400 focus:outline-none bg-white text-slate-600" title="Auto-refresh">
                 {REFRESH_OPTIONS.map((o) => <option key={o.label} value={o.ms ?? ""}>{o.label}</option>)}
               </select>
@@ -446,22 +486,31 @@ export default function TicketsPage() {
                       <SortableTh field="priority" label={t("col.priority")} className="w-24" sortField={sortField} sortDir={sortDir} onSort={handleSortClick} />
                       <th className="text-left px-2 py-3 text-xs font-semibold text-slate-500">{t("col.title")}</th>
                       <SortableTh field="status" label={t("col.status")} className="w-28" sortField={sortField} sortDir={sortDir} onSort={handleSortClick} />
+                      <SortableTh field="updated" label={t("col.updated")} className="w-36" sortField={sortField} sortDir={sortDir} onSort={handleSortClick} />
                       <SortableTh field="created" label={t("col.created")} className="w-36" sortField={sortField} sortDir={sortDir} onSort={handleSortClick} />
                       <th className="w-10" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {pagedTickets.map((ticket) => (
+                    {pagedTickets.map((ticket) => {
+                      const unread = hasUnread(ticket.id, ticket.updated_at);
+                      return (
                       <tr key={ticket.id} className="hover:bg-slate-50 transition-colors group">
                         <td className="px-4 py-3 text-xs font-mono text-slate-500 whitespace-nowrap font-medium">{ticketId(ticket.ticket_number)}</td>
                         <td className="px-2 py-3"><TicketTypeBadge type={ticket.ticket_type} /></td>
                         <td className="px-2 py-3"><PriorityBadge priority={ticket.priority} /></td>
                         <td className="px-2 py-3">
-                          <Link href={`/tickets/${ticket.id}`} className="font-medium text-slate-800 hover:text-violet-700 transition-colors text-sm leading-snug line-clamp-2">
-                            {ticket.name}
-                          </Link>
+                          <div className="flex items-start gap-1.5">
+                            {unread && (
+                              <span title="New activity" className="mt-1.5 flex-shrink-0 w-2 h-2 rounded-full bg-amber-400" />
+                            )}
+                            <Link href={`/tickets/${ticket.id}`} className="font-medium text-slate-800 hover:text-violet-700 transition-colors text-sm leading-snug line-clamp-2">
+                              {ticket.name}
+                            </Link>
+                          </div>
                         </td>
                         <td className="px-2 py-3"><StatusPill status={ticket.status} /></td>
+                        <td className="px-2 py-3 text-xs text-slate-400 whitespace-nowrap">{formatDateTime(ticket.updated_at)}</td>
                         <td className="px-2 py-3 text-xs text-slate-400 whitespace-nowrap">{formatDateTime(ticket.created_at)}</td>
                         <td className="px-2 py-3">
                           <button onClick={() => setConfirmDelete(ticket)}
@@ -473,7 +522,7 @@ export default function TicketsPage() {
                           </button>
                         </td>
                       </tr>
-                    ))}
+                    );})}
                   </tbody>
                 </table>
               </div>
