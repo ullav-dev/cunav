@@ -8,6 +8,7 @@ import { listTickets, listQueues, updateTicket, filterCunavTickets } from "@/lib
 import type { Ticket, Queue, Status, TicketType, Priority } from "@/lib/types";
 import PriorityBadge from "@/components/PriorityBadge";
 import TicketTypeBadge from "@/components/TicketTypeBadge";
+import { ticketId } from "@/lib/ticket-id";
 
 const TICKET_TYPES: TicketType[] = ["bug", "feature", "question", "improvement", "task"];
 const PRIORITIES: Priority[] = ["critical", "high", "medium", "low"];
@@ -142,8 +143,8 @@ export default function TriagePage() {
                 const isSaving = saving.has(ticket.id);
                 return (
                   <tr key={ticket.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors group">
-                    <td className="px-4 py-3 text-xs font-mono text-slate-400 whitespace-nowrap">
-                      {ticket.id.slice(0, 6)}
+                    <td className="px-4 py-3 text-xs font-mono text-slate-500 whitespace-nowrap font-medium">
+                      {ticketId(ticket.ticket_number)}
                     </td>
                     <td className="px-2 py-3 min-w-0">
                       <Link
