@@ -78,6 +78,13 @@ GOOGLE_AI_API_KEY=                    # AI provider: Google
 MISTRAL_API_KEY=                      # AI provider: Mistral
 OLLAMA_URL=http://localhost:11434     # AI provider: Ollama (default, optional)
 
+# AI Enabled Queues (triage webhook — see below)
+CUNAV_AI_WEBHOOK_SECRET=              # must match awe-server's CUNAV_AI_WEBHOOK_SECRET
+CUNAV_AI_SERVICE_EMAIL=               # dedicated bot account, cunav + obair access
+CUNAV_AI_SERVICE_PASSWORD=
+AI_TRIAGE_PROVIDER=anthropic          # optional, defaults to anthropic
+AI_TRIAGE_MODEL=                      # optional, defaults per-provider (see lib/ai-provider.ts)
+
 # Build-time (baked by next.config.ts)
 NEXT_PUBLIC_APP_VERSION=              # set by build
 NEXT_PUBLIC_GIT_SHA=                  # set by build
@@ -92,6 +99,31 @@ npm run build     # production build
 npm run lint      # lint
 npm test          # run tests
 ```
+
+## AI Enabled Queues
+
+A queue (awe-server `jobs.ai_enabled`) can be flagged so that tickets landing in it are
+dispatched to an AI triage step. Flow:
+
+1. awe-server (`ai_dispatch::dispatch_ticket_ai_triage`) fires a background, non-blocking
+   POST to cunav's `/api/ai/triage` webhook whenever a ticket-shaped workflow is created or
+   moved (`job_id` change) into an `ai_enabled` queue — from the REST `/workflows` endpoints
+   *and* the cunav MCP `create_ticket` tool, since both paths converge on the same
+   workflow-create/update code.
+2. cunav's webhook (`src/app/api/ai/triage/route.ts`) authenticates via a shared secret
+   (`X-AWE-Webhook-Secret`), logs in as a dedicated AI service account
+   (`CUNAV_AI_SERVICE_EMAIL`/`PASSWORD`, see `lib/ai-service-auth.ts`), and runs a single
+   structured LLM call producing `{analysis, should_route, confidence}`.
+3. The analysis is always posted as a note. Above the queue's configured
+   `ai_route_confidence_threshold`, and only if the queue has a Togra
+   project/job/template configured (queue admin UI, `AiQueueSettingsModal`), the ticket is
+   auto-routed to Togra the same way `SendToTograModal` does it by hand.
+4. `workflows.ai_processed_at` makes redelivered/racing dispatches a no-op.
+
+v1 deliberately uses one structured LLM call + deterministic follow-up calls, not an
+autonomous tool-use loop — see the conversation history for the fuller design rationale.
+Later phases may move the processing step into an AWE-native `task_scripts` step and/or
+widen the AI's tool access once auto-routing is trusted.
 
 ## Phase 2 Notes (Triage)
 

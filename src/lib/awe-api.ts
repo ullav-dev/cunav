@@ -105,9 +105,19 @@ export const createWorkflow = (
     description?: string;
     is_shared?: boolean;
     team_id?: string;
+    ticket_type?: string;
+    priority?: string;
   }
 ): Promise<Workflow> =>
   apiRequest("/workflows", token, { method: "POST", body: JSON.stringify(payload) });
+
+/** Duplicates a template workflow into `jobId` (e.g. a Togra backlog/sprint). */
+export const createWorkflowFromTemplate = (
+  token: string,
+  jobId: string,
+  templateWorkflowId: string
+): Promise<Workflow> =>
+  apiRequest(`/jobs/${jobId}/workflows/from-template/${templateWorkflowId}`, token, { method: "POST" });
 
 export const updateWorkflow = (
   token: string,
@@ -118,6 +128,8 @@ export const updateWorkflow = (
     status?: string;
     job_id?: string;
     is_shared?: boolean;
+    ticket_type?: string;
+    priority?: string;
   }
 ): Promise<Workflow> =>
   apiRequest(`/workflows/${id}`, token, { method: "PUT", body: JSON.stringify(patch) });
