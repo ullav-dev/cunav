@@ -8,6 +8,7 @@ import { listQueues, createQueue, updateQueue, deleteQueue, listTickets, filterC
 import { getAweTeamIds } from "@/lib/auth-api";
 import type { Queue, Ticket } from "@/lib/types";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import AiQueueSettingsModal from "@/components/AiQueueSettingsModal";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -92,6 +93,7 @@ export default function QueuesPage() {
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Queue | null>(null);
+  const [aiSettingsQueue, setAiSettingsQueue] = useState<Queue | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
@@ -241,14 +243,28 @@ export default function QueuesPage() {
                   className="bg-white rounded-xl border border-slate-200 p-4 hover:border-violet-400 hover:shadow-sm transition-all cursor-pointer group"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <QueueName queue={queue} />
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setConfirmDelete(queue); }}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-colors rounded shrink-0"
-                      title="Delete queue"
-                    >
-                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z"/></svg>
-                    </button>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <QueueName queue={queue} />
+                      {queue.ai_enabled && (
+                        <span title="AI triage enabled" className="shrink-0 text-xs font-medium bg-violet-50 text-violet-700 rounded-full px-1.5 py-0.5">AI</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 shrink-0">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setAiSettingsQueue(queue); }}
+                        className="p-1 text-slate-400 hover:text-violet-600 transition-colors rounded"
+                        title="AI triage settings"
+                      >
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5"><path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492ZM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0Z"/><path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.433 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.433-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319Zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.421 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.421 1.6-1.185 1.184l-.292-.159a1.873 1.873 0 0 0-2.692 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.693-1.115l-.291.16c-.764.415-1.6-.421-1.184-1.185l.159-.292a1.873 1.873 0 0 0-1.116-2.692l-.318-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.53 5.6l-.16-.291c-.415-.764.421-1.6 1.185-1.184l.292.159A1.873 1.873 0 0 0 7.54 2.169l.094-.318Z"/></svg>
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmDelete(queue); }}
+                        className="p-1 text-slate-400 hover:text-red-500 transition-colors rounded"
+                        title="Delete queue"
+                      >
+                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z"/></svg>
+                      </button>
+                    </div>
                   </div>
                   <div className="mt-3 flex items-end justify-between gap-2">
                     <div className="flex items-center gap-1.5">
@@ -286,7 +302,12 @@ export default function QueuesPage() {
                       className="hover:bg-slate-50 transition-colors cursor-pointer group"
                     >
                       <td className="px-4 py-3">
-                        <QueueName queue={queue} />
+                        <div className="flex items-center gap-1.5">
+                          <QueueName queue={queue} />
+                          {queue.ai_enabled && (
+                            <span title="AI triage enabled" className="text-xs font-medium bg-violet-50 text-violet-700 rounded-full px-1.5 py-0.5">AI</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-sm font-semibold text-slate-700">{count}</span>
@@ -297,13 +318,22 @@ export default function QueuesPage() {
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-400">{formatDate(queue.created_at)}</td>
                       <td className="px-4 py-3">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setConfirmDelete(queue); }}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-colors rounded"
-                          title="Delete queue"
-                        >
-                          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z"/></svg>
-                        </button>
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setAiSettingsQueue(queue); }}
+                            className="p-1 text-slate-400 hover:text-violet-600 transition-colors rounded"
+                            title="AI triage settings"
+                          >
+                            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5"><path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492ZM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0Z"/><path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.433 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.433-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319Zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.421 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.421 1.6-1.185 1.184l-.292-.159a1.873 1.873 0 0 0-2.692 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.693-1.115l-.291.16c-.764.415-1.6-.421-1.184-1.185l.159-.292a1.873 1.873 0 0 0-1.116-2.692l-.318-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.53 5.6l-.16-.291c-.415-.764.421-1.6 1.185-1.184l.292.159A1.873 1.873 0 0 0 7.54 2.169l.094-.318Z"/></svg>
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setConfirmDelete(queue); }}
+                            className="p-1 text-slate-400 hover:text-red-500 transition-colors rounded"
+                            title="Delete queue"
+                          >
+                            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z"/></svg>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -330,6 +360,15 @@ export default function QueuesPage() {
           confirmLabel={t("deleteConfirmLabel")}
           onConfirm={() => { const q = confirmDelete; setConfirmDelete(null); handleDelete(q); }}
           onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+
+      {aiSettingsQueue && token && (
+        <AiQueueSettingsModal
+          queue={aiSettingsQueue}
+          token={token}
+          onClose={() => setAiSettingsQueue(null)}
+          onSaved={(updated) => setQueues((prev) => prev.map((q) => q.id === updated.id ? updated : q))}
         />
       )}
     </div>

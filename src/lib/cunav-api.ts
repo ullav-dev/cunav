@@ -76,6 +76,7 @@ export interface UpdateTicketPayload {
   is_shared?: boolean;
   togra_workflow_id?: string;
   togra_project_id?: string;
+  ai_processed_at?: string;
 }
 
 export const updateTicket = (token: string, id: string, patch: UpdateTicketPayload): Promise<Ticket> =>
@@ -102,10 +103,20 @@ export const createQueue = (
     body: JSON.stringify({ ...payload, job_type: "queue" }),
   });
 
+export interface UpdateQueuePayload {
+  name?: string;
+  archived?: boolean;
+  ai_enabled?: boolean;
+  ai_togra_project_id?: string | null;
+  ai_togra_job_id?: string | null;
+  ai_togra_template_id?: string | null;
+  ai_route_confidence_threshold?: number;
+}
+
 export const updateQueue = (
   token: string,
   id: string,
-  patch: { name?: string; archived?: boolean }
+  patch: UpdateQueuePayload
 ): Promise<Queue> =>
   apiRequest(`/jobs/${id}`, token, { method: "PUT", body: JSON.stringify(patch) });
 

@@ -72,6 +72,11 @@ export interface Job {
   archived: boolean;
   start_date: string | null;
   end_date: string | null;
+  ai_enabled: boolean;
+  ai_togra_project_id: string | null;
+  ai_togra_job_id: string | null;
+  ai_togra_template_id: string | null;
+  ai_route_confidence_threshold: number;
 }
 
 // ── Workflows / Tickets ───────────────────────────────────────────────────────
@@ -94,6 +99,7 @@ export interface Workflow {
   togra_workflow_id: string | null;
   togra_project_id: string | null;
   ticket_number: number | null;
+  ai_processed_at: string | null;
 }
 
 // ── Cunav-specific ticket extensions ─────────────────────────────────────────

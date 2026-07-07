@@ -24,6 +24,7 @@ function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
     priority: null,
     reporter_id: null,
     resolved_at: null,
+    ai_processed_at: null,
     ...overrides,
   };
 }
@@ -42,6 +43,11 @@ function makeQueue(id: string, name = "Queue"): Queue {
     archived: false,
     start_date: null,
     end_date: null,
+    ai_enabled: false,
+    ai_togra_project_id: null,
+    ai_togra_job_id: null,
+    ai_togra_template_id: null,
+    ai_route_confidence_threshold: 0.7,
   };
 }
 
