@@ -93,11 +93,18 @@ async function routeToTogra(token: string, ticket: Ticket, queue: Job): Promise<
       is_shared: true,
     });
   } else {
+    // Must NOT send ticket_type on the initial create: awe-server's create_workflow
+    // treats any ticket_type-bearing request as a cunav ticket that has to land in
+    // a queue-type job, and 400s when job_id (here, a Togra backlog/sprint) isn't
+    // one. Create the plain Togra story first, then set ticket_type/priority via
+    // a follow-up PATCH — same two-step shape the template branch above already uses.
     created = await createWorkflow(token, {
       name: ticket.name,
       description,
       job_id: jobId,
       is_shared: true,
+    });
+    created = await updateWorkflow(token, created.id, {
       ticket_type: ticket.ticket_type ?? undefined,
       priority: ticket.priority ?? undefined,
     });
@@ -184,9 +191,16 @@ export async function POST(req: NextRequest) {
       is_shared: true,
     });
 
-    // Surface that the ticket has been looked at — same status transition
-    // routeToTogra below applies when it additionally auto-routes.
-    await updateTicket(token, ticket.id, { status: "In Progress" });
+    // Store the decision as queryable columns (not just inside the note's
+    // markdown body) so an eval script can join confidence against outcomes
+    // without scraping note text. Also surfaces that the ticket has been
+    // looked at via the status transition — routeToTogra below applies the
+    // same transition again when it additionally auto-routes.
+    await updateTicket(token, ticket.id, {
+      status: "In Progress",
+      ai_confidence: decision.confidence,
+      ai_should_route: decision.should_route,
+    });
 
     let routed = false;
     const canRoute =

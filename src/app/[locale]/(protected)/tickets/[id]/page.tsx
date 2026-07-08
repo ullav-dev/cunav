@@ -220,6 +220,32 @@ export default function TicketDetailPage() {
         </div>
       )}
 
+      {ticket.ai_processed_at && (
+        <div className="shrink-0 flex items-center justify-between gap-3 bg-slate-50 border-b border-slate-200 px-6 py-1.5">
+          <div className="flex items-center gap-3 text-xs text-slate-500">
+            <span>🤖 AI triage</span>
+            {ticket.ai_confidence != null && <span>{Math.round(ticket.ai_confidence * 100)}% confidence</span>}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-slate-400 mr-0.5">Was this helpful?</span>
+            <button
+              onClick={() => patch({ ai_outcome_feedback: "helpful" })}
+              title="Helpful"
+              className={`text-sm px-1.5 py-0.5 rounded transition-colors ${ticket.ai_outcome_feedback === "helpful" ? "bg-emerald-100" : "hover:bg-white"}`}
+            >
+              👍
+            </button>
+            <button
+              onClick={() => patch({ ai_outcome_feedback: "unhelpful" })}
+              title="Unhelpful"
+              className={`text-sm px-1.5 py-0.5 rounded transition-colors ${ticket.ai_outcome_feedback === "unhelpful" ? "bg-red-100" : "hover:bg-white"}`}
+            >
+              👎
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Tab content */}
       {mainTab === "details" && (
         <div className="flex-1 flex min-h-0">
