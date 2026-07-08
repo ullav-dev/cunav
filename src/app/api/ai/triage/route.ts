@@ -168,11 +168,19 @@ export async function POST(req: NextRequest) {
 
     const decision = await runTriageDecision(buildTicketPrompt(ticket));
 
+    // Surfacing the model's self-reported confidence (and the routing verdict
+    // it fed into) lets a human glance at past tickets and judge whether this
+    // ticket type/description tends to produce trustworthy confidence scores —
+    // useful signal for tuning how tickets are framed or which model/threshold
+    // a queue should use.
+    const confidencePct = Math.round(decision.confidence * 100);
+    const analysisBody = `${decision.analysis}\n\n---\n*AI confidence: ${confidencePct}% — ${decision.should_route ? "recommended routing" : "did not recommend routing"}*`;
+
     await createNote(token, {
       entity_type: "workflow",
       entity_id: ticket.id,
       title: AI_ANALYSIS_NOTE_TITLE,
-      body: decision.analysis,
+      body: analysisBody,
       is_shared: true,
     });
 
