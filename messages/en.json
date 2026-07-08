@@ -244,6 +244,7 @@
     "compactTitle": "Notes ({count})",
     "you": "You",
     "unknown": "Unknown",
+    "aiAuthor": "🤖 AI Assistant",
     "justNow": "just now",
     "mAgo": "{count}m ago",
     "hAgo": "{count}h ago",

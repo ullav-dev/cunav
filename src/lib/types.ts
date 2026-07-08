@@ -147,3 +147,12 @@ export interface Note {
   created_at: string;
   updated_at: string;
 }
+
+// Notes created by the AI triage service account (src/app/api/ai/triage/route.ts)
+// have created_by set to that account's UUID, which isn't a member of any team
+// the viewer has loaded — so it can't be resolved to a readable name the normal
+// way. Recognize these notes by their fixed titles instead and label them
+// directly rather than showing the raw UUID.
+export const AI_ANALYSIS_NOTE_TITLE = "AI Analysis";
+export const AI_AUTOROUTE_NOTE_TITLE = "Auto-routed to Togra";
+export const AI_NOTE_TITLES: readonly string[] = [AI_ANALYSIS_NOTE_TITLE, AI_AUTOROUTE_NOTE_TITLE];

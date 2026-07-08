@@ -244,6 +244,7 @@
     "compactTitle": "Notizen ({count})",
     "you": "Sie",
     "unknown": "Unbekannt",
+    "aiAuthor": "🤖 KI-Assistent",
     "justNow": "gerade eben",
     "mAgo": "vor {count} Min.",
     "hAgo": "vor {count} Std.",

@@ -13,6 +13,7 @@ import { getAiServiceToken } from "@/lib/ai-service-auth";
 import { getAiModel, AiProviderNotConfiguredError } from "@/lib/ai-provider";
 import type { AiProvider } from "@/lib/ai-settings";
 import type { Ticket, Job } from "@/lib/types";
+import { AI_ANALYSIS_NOTE_TITLE, AI_AUTOROUTE_NOTE_TITLE } from "@/lib/types";
 
 const TRIAGE_PROVIDER = (process.env.AI_TRIAGE_PROVIDER as AiProvider | undefined) ?? "anthropic";
 const TRIAGE_MODEL = process.env.AI_TRIAGE_MODEL;
@@ -111,7 +112,7 @@ async function routeToTogra(token: string, ticket: Ticket, queue: Job): Promise<
   await createNote(token, {
     entity_type: "workflow",
     entity_id: ticket.id,
-    title: "Auto-routed to Togra",
+    title: AI_AUTOROUTE_NOTE_TITLE,
     body: `Story created automatically by AI triage. Togra workflow ID: \`${created.id}\``,
     is_shared: true,
   });
@@ -170,7 +171,7 @@ export async function POST(req: NextRequest) {
     await createNote(token, {
       entity_type: "workflow",
       entity_id: ticket.id,
-      title: "AI Analysis",
+      title: AI_ANALYSIS_NOTE_TITLE,
       body: decision.analysis,
       is_shared: true,
     });

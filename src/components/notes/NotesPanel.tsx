@@ -15,6 +15,7 @@ import {
   listNoteFolders, createNoteFolder, updateNoteFolder, deleteNoteFolder,
 } from "@/lib/notes-api";
 import type { Note, NoteFolder, NoteEntityType } from "@/lib/types";
+import { AI_NOTE_TITLES } from "@/lib/types";
 import { markNoteRead, isNoteUnread } from "@/lib/last-read";
 
 function formatRelative(iso: string, t: (key: string, params?: Record<string, string | number | Date>) => string): string {
@@ -163,7 +164,7 @@ function NoteThread({ note, token, resolveCreator }: { note: Note; token: string
 
 function NoteView({ note, folders, currentUserId, token, resolveCreator, onEdit, onDelete, onMove, deleting }: {
   note: Note; folders: NoteFolder[]; currentUserId: string; token: string;
-  resolveCreator: (id: string) => string;
+  resolveCreator: (id: string, noteTitle?: string) => string;
   onEdit: () => void; onDelete: () => void; onMove: (folderId: string | null) => void; deleting: boolean;
 }) {
   const t = useTranslations("notes");
@@ -174,7 +175,7 @@ function NoteView({ note, folders, currentUserId, token, resolveCreator, onEdit,
         <div className="min-w-0">
           <h3 className="font-semibold text-slate-800 leading-snug">{note.title}</h3>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span className="text-xs text-slate-500">{resolveCreator(note.created_by)}</span>
+            <span className="text-xs text-slate-500">{resolveCreator(note.created_by, note.title)}</span>
             <span className="text-xs text-slate-400">{formatDate(note.updated_at)}</span>
             {note.is_shared
               ? <span className="text-xs text-violet-600 font-medium">{t("shared")}</span>
@@ -253,7 +254,8 @@ export default function NotesPanel({ entityType, entityId, isTeam, compact = fal
   const [foldersVisible, setFoldersVisible] = useState(true);
 
   const currentUserId = user?.id ?? "";
-  const resolveCreator = (id: string | null): string => {
+  const resolveCreator = (id: string | null, noteTitle?: string): string => {
+    if (noteTitle && AI_NOTE_TITLES.includes(noteTitle)) return t("aiAuthor");
     if (!id) return t("unknown");
     if (id === currentUserId) {
       const me = members.find((m) => m.id === id);
@@ -430,7 +432,7 @@ export default function NotesPanel({ entityType, entityId, isTeam, compact = fal
                 <span className="text-[10px] shrink-0">{note.is_shared ? "👥" : "🔒"}</span>
               </div>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-[10px] text-slate-400">{resolveCreator(note.created_by)}</span>
+                <span className="text-[10px] text-slate-400">{resolveCreator(note.created_by, note.title)}</span>
                 <span className="text-[10px] text-slate-300">·</span>
                 <span className={`text-[10px] ${unread ? "text-amber-600 font-medium" : "text-slate-400"}`}>{formatRelative(note.updated_at, t)}</span>
                 {folderName && <><span className="text-[10px] text-slate-300">·</span><span className="text-[10px] text-slate-400">📁 {folderName}</span></>}
