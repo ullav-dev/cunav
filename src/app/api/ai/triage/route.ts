@@ -184,9 +184,16 @@ export async function POST(req: NextRequest) {
       is_shared: true,
     });
 
-    // Surface that the ticket has been looked at — same status transition
-    // routeToTogra below applies when it additionally auto-routes.
-    await updateTicket(token, ticket.id, { status: "In Progress" });
+    // Store the decision as queryable columns (not just inside the note's
+    // markdown body) so an eval script can join confidence against outcomes
+    // without scraping note text. Also surfaces that the ticket has been
+    // looked at via the status transition — routeToTogra below applies the
+    // same transition again when it additionally auto-routes.
+    await updateTicket(token, ticket.id, {
+      status: "In Progress",
+      ai_confidence: decision.confidence,
+      ai_should_route: decision.should_route,
+    });
 
     let routed = false;
     const canRoute =

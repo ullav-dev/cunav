@@ -100,7 +100,14 @@ export interface Workflow {
   togra_project_id: string | null;
   ticket_number: number | null;
   ai_processed_at: string | null;
+  ai_confidence: number | null;
+  ai_should_route: boolean | null;
+  ai_outcome_feedback: AiOutcomeFeedback | null;
+  ai_outcome_feedback_by: string | null;
+  ai_outcome_feedback_at: string | null;
 }
+
+export type AiOutcomeFeedback = "helpful" | "unhelpful";
 
 // ── Cunav-specific ticket extensions ─────────────────────────────────────────
 // These fields are added to the workflows table by cunav's awe-server migration.

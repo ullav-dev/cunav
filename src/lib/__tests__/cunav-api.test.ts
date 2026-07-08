@@ -25,6 +25,11 @@ function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
     reporter_id: null,
     resolved_at: null,
     ai_processed_at: null,
+    ai_confidence: null,
+    ai_should_route: null,
+    ai_outcome_feedback: null,
+    ai_outcome_feedback_by: null,
+    ai_outcome_feedback_at: null,
     ...overrides,
   };
 }

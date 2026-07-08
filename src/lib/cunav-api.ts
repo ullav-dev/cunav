@@ -1,7 +1,7 @@
 // Cunav-specific API calls — ticket CRUD wrapping workflow endpoints,
 // plus queue (job) management.
 
-import type { Ticket, Queue, Job, TicketType, Priority } from "./types";
+import type { Ticket, Queue, Job, TicketType, Priority, AiOutcomeFeedback } from "./types";
 
 const BASE =
   typeof window === "undefined"
@@ -77,6 +77,9 @@ export interface UpdateTicketPayload {
   togra_workflow_id?: string;
   togra_project_id?: string;
   ai_processed_at?: string;
+  ai_confidence?: number;
+  ai_should_route?: boolean;
+  ai_outcome_feedback?: AiOutcomeFeedback;
 }
 
 export const updateTicket = (token: string, id: string, patch: UpdateTicketPayload): Promise<Ticket> =>
