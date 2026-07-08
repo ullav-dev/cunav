@@ -1,29 +1,47 @@
+import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+
 export type AiProvider = "anthropic" | "openai" | "google" | "mistral" | "ollama";
 
-export interface AiPreference {
+// Personal (BYOK) AI settings for the interactive Triage chat panel. Stored in
+// ullav-user-management, scoped to this app via `?app=cunav` (see
+// src/app/api/ai/settings/route.ts) — separate from the deployment-wide
+// provider keys (ANTHROPIC_API_KEY etc.) that power the AI-enabled-queue
+// triage webhook, which has no signed-in user to own a personal key.
+export interface AiSettings {
   provider: AiProvider;
   model: string;
   ollamaUrl?: string;
+  encryptedKey?: string;
+  iv?: string;
+  authTag?: string;
 }
 
-const DEFAULT_PREF: AiPreference = {
-  provider: "anthropic",
-  model: "claude-haiku-4-5-20251001",
-};
+const ENC_KEY = Buffer.from(
+  (process.env.SETTINGS_ENCRYPTION_KEY ?? "cunav-dev-key-change-in-production!!")
+    .padEnd(32, "0")
+    .slice(0, 32),
+);
 
-const PREF_KEY = "cunav_ai_pref";
-
-export function loadPreference(): AiPreference {
-  if (typeof window === "undefined") return DEFAULT_PREF;
-  try {
-    const raw = localStorage.getItem(PREF_KEY);
-    if (raw) return { ...DEFAULT_PREF, ...JSON.parse(raw) };
-  } catch {}
-  return DEFAULT_PREF;
+export function encryptKey(plaintext: string): { encryptedKey: string; iv: string; authTag: string } {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", ENC_KEY, iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return {
+    encryptedKey: encrypted.toString("base64"),
+    iv: iv.toString("base64"),
+    authTag: authTag.toString("base64"),
+  };
 }
 
-export function savePreference(pref: AiPreference): void {
-  localStorage.setItem(PREF_KEY, JSON.stringify(pref));
+export function decryptKey(encryptedKey: string, iv: string, authTag: string): string {
+  const decipher = createDecipheriv("aes-256-gcm", ENC_KEY, Buffer.from(iv, "base64"));
+  decipher.setAuthTag(Buffer.from(authTag, "base64"));
+  const decrypted = Buffer.concat([
+    decipher.update(Buffer.from(encryptedKey, "base64")),
+    decipher.final(),
+  ]);
+  return decrypted.toString("utf8");
 }
 
 export function usernameFromBearer(authHeader: string | null): string | null {
