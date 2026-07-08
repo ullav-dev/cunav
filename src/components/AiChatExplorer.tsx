@@ -8,7 +8,7 @@ import dynamic from "next/dynamic";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuth } from "@/contexts/AuthContext";
-import { loadPreference, type AiPreference } from "@/lib/ai-settings";
+import type { AiProvider } from "@/lib/ai-settings";
 import { Link } from "@/i18n/navigation";
 import type { Ticket } from "@/lib/types";
 
@@ -205,17 +205,37 @@ function buildTicketContext(ticket: Ticket): string {
   ].filter(Boolean).join("\n");
 }
 
+interface ChatAiSettings {
+  provider: AiProvider;
+  model: string;
+  hasKey: boolean;
+}
+
 export default function AiChatExplorer({ ticket, onSaveAsNote }: Props) {
   const { token } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [input, setInput] = useState("");
-  const [pref, setPref] = useState<AiPreference>({ provider: "anthropic", model: "claude-haiku-4-5-20251001" });
+  const [settings, setSettings] = useState<ChatAiSettings | null>(null);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [notConfigured, setNotConfigured] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [pendingNote, setPendingNote] = useState<{ title: string; body: string } | null>(null);
 
-  useEffect(() => { setPref(loadPreference()); }, []);
+  useEffect(() => {
+    if (!token) return;
+    fetch("/api/ai/settings", { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (r) => (r.ok && r.status !== 204 ? r.json() : null))
+      .then((data) => setSettings(data ?? null))
+      .catch(() => setSettings(null))
+      .finally(() => setSettingsLoaded(true));
+  }, [token]);
+
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    const configured = !!settings && (settings.provider === "ollama" || settings.hasKey);
+    setNotConfigured(!configured);
+  }, [settingsLoaded, settings]);
 
   const transport = useMemo(
     () =>
@@ -224,13 +244,10 @@ export default function AiChatExplorer({ ticket, onSaveAsNote }: Props) {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: {
           ...(ticket ? { ticketContext: buildTicketContext(ticket) } : {}),
-          provider: pref.provider,
-          model: pref.model,
-          ...(pref.ollamaUrl ? { ollamaUrl: pref.ollamaUrl } : {}),
         },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [token, ticket?.id, pref.provider, pref.model, pref.ollamaUrl],
+    [token, ticket?.id],
   );
 
   const { messages, sendMessage, setMessages, status, error } = useChat({ transport });
@@ -238,7 +255,7 @@ export default function AiChatExplorer({ ticket, onSaveAsNote }: Props) {
   const visibleMessages = messages.filter((m) => m.role !== "system");
 
   useEffect(() => {
-    if (error?.message?.includes("not configured")) setNotConfigured(true);
+    if (error?.message?.includes("not configured") || error?.message?.includes("API key")) setNotConfigured(true);
   }, [error]);
 
   useEffect(() => {
@@ -279,14 +296,22 @@ export default function AiChatExplorer({ ticket, onSaveAsNote }: Props) {
     setPendingNote({ title: `AI conversation — ${date}`, body });
   }
 
+  if (!settingsLoaded) {
+    return <div className="flex items-center justify-center h-full text-sm text-slate-400">Loading…</div>;
+  }
+
   if (notConfigured) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center px-6 py-12 gap-3">
         <svg viewBox="0 0 24 24" fill="currentColor" className="w-10 h-10 text-slate-300">
           <path d="M12 3C6.486 3 2 6.691 2 11.25c0 2.444 1.198 4.639 3.107 6.176-.178 1.07-.567 2.09-1.107 3.09.1.003.1.003.2.187a.5.5 0 0 0 .458.297h.042a14.16 14.16 0 0 0 4.4-1.6c.986.267 2.014.4 3 .4 5.514 0 10-3.691 10-8.25S17.514 3 12 3Z" />
         </svg>
-        <p className="text-sm font-medium text-slate-700">AI provider not configured</p>
-        <p className="text-xs text-slate-400">Check Settings or ask your administrator.</p>
+        <p className="text-sm font-medium text-slate-700">Set up your AI assistant</p>
+        <p className="text-xs text-slate-400 max-w-xs">
+          This chat uses your own API key, like the Research assistant in Togra — it&apos;s
+          separate from the automated ticket triage your admin may have configured. Add a key in
+          Settings to start chatting.
+        </p>
         <Link href="/settings" className="text-sm font-medium text-violet-700 hover:text-violet-800 transition-colors">
           Go to Settings →
         </Link>
@@ -311,7 +336,7 @@ export default function AiChatExplorer({ ticket, onSaveAsNote }: Props) {
       <div className="flex flex-col h-full">
         {/* Header */}
         <div className="flex items-center justify-between shrink-0 pb-2 mb-2 border-b border-slate-100">
-          <span className="text-xs text-slate-400 capitalize">{pref.provider} · {pref.model}</span>
+          <span className="text-xs text-slate-400 capitalize">{settings?.provider} · {settings?.model}</span>
           <div className="flex items-center gap-3">
             {visibleMessages.length > 0 && (
               <>

@@ -72,11 +72,15 @@ AUTH_URL=http://localhost:8081         # ullav-user-management
 TOGRA_URL=http://localhost:3007        # Togra app (for SSO cross-link)
 OBAIR_URL=http://localhost:3000        # Obair/AWE app
 DAM_BROWSER_URL=http://localhost:3004  # DAM browser
-ANTHROPIC_API_KEY=                    # AI provider: Anthropic (any one or more required)
-OPENAI_API_KEY=                       # AI provider: OpenAI
-GOOGLE_AI_API_KEY=                    # AI provider: Google
-MISTRAL_API_KEY=                      # AI provider: Mistral
-OLLAMA_URL=http://localhost:11434     # AI provider: Ollama (default, optional)
+# Deployment-wide AI provider keys — power ONLY the automated AI Enabled Queues
+# triage webhook below (it has no signed-in user, so it can't use a personal key).
+# The interactive Triage chat panel (AiChatExplorer) never reads these; each
+# agent brings their own key via Settings — see "Personal AI Assistant" below.
+ANTHROPIC_API_KEY=                    # any one or more required for the triage webhook
+OPENAI_API_KEY=
+GOOGLE_AI_API_KEY=
+MISTRAL_API_KEY=
+OLLAMA_URL=http://localhost:11434     # optional
 
 # AI Enabled Queues (triage webhook — see below)
 CUNAV_AI_WEBHOOK_SECRET=              # must match awe-server's CUNAV_AI_WEBHOOK_SECRET
@@ -84,6 +88,10 @@ CUNAV_AI_SERVICE_EMAIL=               # dedicated bot account, cunav + obair acc
 CUNAV_AI_SERVICE_PASSWORD=
 AI_TRIAGE_PROVIDER=anthropic          # optional, defaults to anthropic
 AI_TRIAGE_MODEL=                      # optional, defaults per-provider (see lib/ai-provider.ts)
+
+# Personal AI Assistant (BYOK, per-user — see below)
+SETTINGS_ENCRYPTION_KEY=              # AES-256-GCM key encrypting personal API keys at rest;
+                                       # cunav's own value, does NOT need to match Togra's
 
 # Build-time (baked by next.config.ts)
 NEXT_PUBLIC_APP_VERSION=              # set by build
@@ -124,6 +132,27 @@ v1 deliberately uses one structured LLM call + deterministic follow-up calls, no
 autonomous tool-use loop — see the conversation history for the fuller design rationale.
 Later phases may move the processing step into an AWE-native `task_scripts` step and/or
 widen the AI's tool access once auto-routing is trusted.
+
+## Personal AI Assistant (BYOK)
+
+The interactive Triage chat panel (`AiChatExplorer`) is bring-your-own-key, separate from
+the AI Enabled Queues webhook above — an agent can chat with an LLM to help triage/respond
+to tickets even when no admin has configured deployment-wide provider keys, and vice versa.
+
+- Settings page (`/settings`) lets each agent pick a provider/model and paste a personal
+  API key. There is no fallback to a deployment-wide key: if an agent hasn't added their
+  own key (or picked Ollama, which needs none), the chat panel shows a "set up your AI
+  assistant" prompt instead of the chat UI.
+- Storage: `src/app/api/ai/settings/route.ts` proxies to `ullav-user-management`'s generic
+  `/users/me/ai-settings` endpoint (the same one Togra's Research assistant uses), keyed by
+  `(username, app)`. Cunav always passes `app=cunav` so its settings can't collide with or
+  overwrite a user's Togra settings — the two are fully isolated per app, not shared.
+- The key is AES-256-GCM encrypted before being sent to UUM, using `SETTINGS_ENCRYPTION_KEY`
+  (see Environment Variables above). This is cunav's own secret — it does not need to match
+  Togra's `SETTINGS_ENCRYPTION_KEY`, since the rows are already isolated by `app`.
+- `src/lib/ai-provider.ts`'s `getAiModel()` is shared by both the chat route and the triage
+  webhook: the webhook calls it with no `apiKey` override (falls back to the env var), the
+  chat route always passes the user's decrypted personal key explicitly.
 
 ## Phase 2 Notes (Triage)
 
