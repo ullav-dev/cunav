@@ -163,6 +163,12 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
         if (!patch.ok) throw new Error(`Patch failed: HTTP ${patch.status}`);
         created = await patch.json();
       } else {
+        // Must NOT send ticket_type on the initial create: awe-server's
+        // create_workflow treats any ticket_type-bearing request as a cunav
+        // ticket that has to land in a queue-type job, and 400s when job_id
+        // (here, a Togra backlog/sprint) isn't one. Create the plain Togra
+        // story first, then set ticket_type/priority via a follow-up PATCH —
+        // same two-step shape the template branch above already uses.
         const res = await fetch("/api/workflows", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -171,12 +177,20 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
             description: enrichedDescription,
             job_id: selectedJob,
             is_shared: true,
-            ticket_type: ticket.ticket_type ?? undefined,
-            priority: ticket.priority ?? undefined,
           }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         created = await res.json();
+        const patch = await fetch(`/api/workflows/${created.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            ticket_type: ticket.ticket_type ?? undefined,
+            priority: ticket.priority ?? undefined,
+          }),
+        });
+        if (!patch.ok) throw new Error(`Patch failed: HTTP ${patch.status}`);
+        created = await patch.json();
       }
       const project = projects.find((p) => p.id === selectedProject);
       const job = jobs.find((j) => j.id === selectedJob);
