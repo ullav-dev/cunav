@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { listTickets, createTicket, deleteTicket, filterCunavTickets, listQueues } from "@/lib/cunav-api";
 import { getAweTeamIds } from "@/lib/auth-api";
 import { ticketId } from "@/lib/ticket-id";
-import { hasUnread } from "@/lib/last-read";
+import { hasUnread, hasUnreadAiAnalysis } from "@/lib/last-read";
 import { useInterval } from "@/hooks/useInterval";
 import type { Ticket, Queue, Status, TicketType, Priority } from "@/lib/types";
 import StatusPill from "@/components/StatusPill";
@@ -493,20 +493,26 @@ export default function TicketsPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {pagedTickets.map((ticket) => {
-                      const unread = hasUnread(ticket.id, ticket.updated_at);
+                      const aiUnread = hasUnreadAiAnalysis(ticket.id, ticket.ai_processed_at);
+                      const unread = !aiUnread && hasUnread(ticket.id, ticket.updated_at);
                       return (
                       <tr key={ticket.id} className="hover:bg-slate-50 transition-colors group">
                         <td className="px-4 py-3 text-xs font-mono text-slate-500 whitespace-nowrap font-medium">{ticketId(ticket.ticket_number)}</td>
                         <td className="px-2 py-3"><TicketTypeBadge type={ticket.ticket_type} /></td>
                         <td className="px-2 py-3"><PriorityBadge priority={ticket.priority} /></td>
                         <td className="px-2 py-3">
-                          <div className="flex items-start gap-1.5">
+                          <div className="flex items-start gap-1.5 flex-wrap">
                             {unread && (
                               <span title="New activity" className="mt-1.5 flex-shrink-0 w-2 h-2 rounded-full bg-amber-400" />
                             )}
                             <Link href={`/tickets/${ticket.id}`} className="font-medium text-slate-800 hover:text-violet-700 transition-colors text-sm leading-snug line-clamp-2">
                               {ticket.name}
                             </Link>
+                            {aiUnread && (
+                              <span title="New AI analysis to review" className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold text-violet-700 bg-violet-100 border border-violet-200 rounded-full px-2 py-0.5">
+                                🤖 AI Analysis
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="px-2 py-3"><StatusPill status={ticket.status} /></td>

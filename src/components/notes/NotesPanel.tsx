@@ -249,7 +249,7 @@ export default function NotesPanel({ entityType, entityId, isTeam, compact = fal
   const [newFolderName, setNewFolderName] = useState("");
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
   const [renameFolderName, setRenameFolderName] = useState("");
-  const listResize = useResize({ initial: 220, min: 140, max: 400, axis: "x" });
+  const listResize = useResize({ initial: 220, min: 140, max: Infinity, axis: "x" });
   const [foldersVisible, setFoldersVisible] = useState(true);
 
   const currentUserId = user?.id ?? "";

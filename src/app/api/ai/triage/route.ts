@@ -175,6 +175,10 @@ export async function POST(req: NextRequest) {
       is_shared: true,
     });
 
+    // Surface that the ticket has been looked at — same status transition
+    // routeToTogra below applies when it additionally auto-routes.
+    await updateTicket(token, ticket.id, { status: "In Progress" });
+
     let routed = false;
     const canRoute =
       decision.should_route &&
