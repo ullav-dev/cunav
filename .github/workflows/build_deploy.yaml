@@ -1,12 +1,12 @@
-# Runs lint + tests on every PR targeting main.
+# Runs lint + tests on every PR, regardless of base branch (stacked feature-branch
+# PRs need CI too, not just ones targeting main).
 # Docker build + push to GHCR runs on merge to main only (push event).
 name: build_deploy
 
 on:
   push:
     branches: main
-  pull_request:
-    branches: main
+  pull_request: {}
 
 jobs:
   test:
