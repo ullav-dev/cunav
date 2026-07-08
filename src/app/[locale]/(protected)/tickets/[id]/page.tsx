@@ -7,7 +7,7 @@ import { Link } from "@/i18n/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { getTicket, updateTicket, deleteTicket } from "@/lib/cunav-api";
 import { ticketId } from "@/lib/ticket-id";
-import { markRead } from "@/lib/last-read";
+import { markRead, hasUnreadAiAnalysis, markAiAnalysisRead } from "@/lib/last-read";
 import { listQueues } from "@/lib/cunav-api";
 import { createNote } from "@/lib/notes-api";
 import { useRouter } from "@/i18n/navigation";
@@ -59,9 +59,10 @@ export default function TicketDetailPage() {
   const [mainTab, setMainTab] = useState<MainTab>("details");
   const [explorerTab, setExplorerTab] = useState<ExplorerTab>("notes");
   const [showSendToTogra, setShowSendToTogra] = useState(false);
+  const [aiBannerDismissed, setAiBannerDismissed] = useState(false);
   const { tograUrl } = useAppUrls();
   const titleRef = useRef<HTMLInputElement>(null);
-  const rightResize = useResize({ initial: 380, min: 280, max: 600, axis: "x", reverse: true });
+  const rightResize = useResize({ initial: 480, min: 320, max: Infinity, axis: "x", reverse: true });
 
   const load = useCallback(async () => {
     if (!token || !id) return;
@@ -161,6 +162,14 @@ export default function TicketDetailPage() {
   );
 
   const queueName = queues.find((q) => q.id === ticket.job_id)?.name;
+  const showAiBanner = !aiBannerDismissed && hasUnreadAiAnalysis(ticket.id, ticket.ai_processed_at);
+
+  const handleViewAiAnalysis = () => {
+    markAiAnalysisRead(ticket.id);
+    setAiBannerDismissed(true);
+    setMainTab("triage");
+    setExplorerTab("notes");
+  };
 
   const tabBtn = (tab: MainTab, label: string) => (
     <button
@@ -198,6 +207,18 @@ export default function TicketDetailPage() {
           {tabBtn("triage", t("tabTriage"))}
         </div>
       </div>
+
+      {showAiBanner && (
+        <div className="shrink-0 flex items-center justify-between gap-3 bg-violet-50 border-b border-violet-200 px-6 py-2.5">
+          <div className="flex items-center gap-2 text-sm text-violet-800">
+            <span>🤖</span>
+            <span className="font-medium">AI analysis is ready to review</span>
+          </div>
+          <button onClick={handleViewAiAnalysis} className="text-xs font-semibold text-violet-700 hover:text-violet-900 underline shrink-0">
+            View analysis
+          </button>
+        </div>
+      )}
 
       {/* Tab content */}
       {mainTab === "details" && (
