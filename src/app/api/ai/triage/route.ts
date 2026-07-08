@@ -93,11 +93,18 @@ async function routeToTogra(token: string, ticket: Ticket, queue: Job): Promise<
       is_shared: true,
     });
   } else {
+    // Must NOT send ticket_type on the initial create: awe-server's create_workflow
+    // treats any ticket_type-bearing request as a cunav ticket that has to land in
+    // a queue-type job, and 400s when job_id (here, a Togra backlog/sprint) isn't
+    // one. Create the plain Togra story first, then set ticket_type/priority via
+    // a follow-up PATCH — same two-step shape the template branch above already uses.
     created = await createWorkflow(token, {
       name: ticket.name,
       description,
       job_id: jobId,
       is_shared: true,
+    });
+    created = await updateWorkflow(token, created.id, {
       ticket_type: ticket.ticket_type ?? undefined,
       priority: ticket.priority ?? undefined,
     });
