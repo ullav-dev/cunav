@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Ticket } from "@/lib/types";
+import type { Ticket, Note } from "@/lib/types";
+import { listNotes, createNote } from "@/lib/notes-api";
+import { ticketId } from "@/lib/ticket-id";
 
 interface Project {
   id: string;
@@ -27,7 +29,13 @@ interface WorkflowTemplate {
 interface Props {
   ticket: Ticket;
   onClose: () => void;
-  onSent: (tograWorkflowId: string, tograProjectId: string, projectName: string, jobName: string) => void;
+  onSent: (
+    tograWorkflowId: string,
+    tograProjectId: string,
+    projectName: string,
+    jobName: string,
+    noteCopyWarning?: string
+  ) => void;
 }
 
 export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
@@ -50,6 +58,30 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [projectsError, setProjectsError] = useState<string | null>(null);
+
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [loadingNotes, setLoadingNotes] = useState(true);
+  const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+
+  // Load the ticket's own notes so the user can pick which ones to copy over.
+  // Replies are left out — a copied reply with no parent wouldn't make sense
+  // standalone on the new Togra story.
+  useEffect(() => {
+    if (!token) return;
+    listNotes(token, "workflow", ticket.id)
+      .then((list) => setNotes(list.filter((n) => !n.parent_id)))
+      .catch(() => setNotes([]))
+      .finally(() => setLoadingNotes(false));
+  }, [token, ticket.id]);
+
+  function toggleNote(id: string) {
+    setSelectedNoteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   // Load projects
   useEffect(() => {
@@ -192,11 +224,36 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
         if (!patch.ok) throw new Error(`Patch failed: HTTP ${patch.status}`);
         created = await patch.json();
       }
+      let noteCopyWarning: string | undefined;
+      if (selectedNoteIds.size > 0) {
+        const now = new Date();
+        const time = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+        const date = now.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+        const ticketUrl = `${window.location.origin}/en/tickets/${ticket.id}`;
+        const attribution = `\n\n---\n*This note was copied from [Cunav ticket ${ticketId(ticket.ticket_number)}](${ticketUrl}) at ${time} on ${date}.*`;
+        const toCopy = notes.filter((n) => selectedNoteIds.has(n.id));
+        const results = await Promise.allSettled(
+          toCopy.map((note) =>
+            createNote(token, {
+              entity_type: "workflow",
+              entity_id: created.id,
+              title: note.title,
+              body: (note.body ?? "") + attribution,
+              is_shared: true,
+            })
+          )
+        );
+        const failures = results.filter((r) => r.status === "rejected").length;
+        if (failures > 0) {
+          noteCopyWarning = `Sent to Togra, but ${failures} of ${toCopy.length} note(s) failed to copy.`;
+        }
+      }
+
       const project = projects.find((p) => p.id === selectedProject);
       const job = jobs.find((j) => j.id === selectedJob);
       // Use the job's own project_id as the authoritative cross-reference, not selectedProject
       const actualProjectId = job?.project_id ?? selectedProject;
-      onSent(created.id, actualProjectId, project?.name ?? "Togra", job?.name ?? "backlog");
+      onSent(created.id, actualProjectId, project?.name ?? "Togra", job?.name ?? "backlog", noteCopyWarning);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send to Togra");
     } finally {
@@ -331,6 +388,47 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
                   )}
                 </div>
               )}
+
+              {/* Notes to copy */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">Notes to copy</label>
+                {loadingNotes ? (
+                  <div className="flex items-center gap-2 py-2">
+                    <div className="w-4 h-4 border-2 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+                    <span className="text-xs text-slate-400">Loading notes…</span>
+                  </div>
+                ) : notes.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic">No notes on this ticket.</p>
+                ) : (
+                  <>
+                    <p className="text-xs text-slate-400 mb-2">
+                      Select any notes to copy onto the new Togra story. The ticket itself is already visible in
+                      Togra — only copy notes with extra context (e.g. implementation advice) the Togra user needs.
+                    </p>
+                    <div className="border border-slate-200 rounded-lg max-h-40 overflow-y-auto divide-y divide-slate-100">
+                      {notes.map((note) => (
+                        <label
+                          key={note.id}
+                          className="flex items-start gap-2 px-3 py-2 cursor-pointer hover:bg-slate-50 select-none"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedNoteIds.has(note.id)}
+                            onChange={() => toggleNote(note.id)}
+                            className="accent-violet-600 mt-0.5"
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium text-slate-800 truncate">{note.title}</span>
+                            {note.body && (
+                              <span className="block text-xs text-slate-400 truncate">{note.body}</span>
+                            )}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
 
               {error && <p className="text-xs text-red-600">{error}</p>}
             </>

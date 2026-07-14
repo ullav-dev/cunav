@@ -121,7 +121,7 @@ export default function TicketDetailPage() {
     await createNote(token, { entity_type: "workflow", entity_id: ticket.id, title, body: body || undefined, is_shared: isShared });
   }
 
-  async function handleTograSent(workflowId: string, projectId: string, project: string, job: string) {
+  async function handleTograSent(workflowId: string, projectId: string, project: string, job: string, noteCopyWarning?: string) {
     setShowSendToTogra(false);
     if (!token || !ticket) return;
     try {
@@ -140,6 +140,7 @@ export default function TicketDetailPage() {
           : `Story created in **${project}** › **${job}**. Togra workflow ID: \`${workflowId}\``,
         is_shared: true,
       });
+      if (noteCopyWarning) setError(noteCopyWarning);
     } catch (err) {
       console.error("handleTograSent failed:", err);
       setError(`Sent to Togra but failed to update ticket: ${err instanceof Error ? err.message : String(err)}`);
