@@ -80,6 +80,8 @@ export interface UpdateTicketPayload {
   ai_confidence?: number;
   ai_should_route?: boolean;
   ai_outcome_feedback?: AiOutcomeFeedback;
+  ai_outcome_feedback_reason?: string;
+  ai_outcome_feedback_note_id?: string;
 }
 
 export const updateTicket = (token: string, id: string, patch: UpdateTicketPayload): Promise<Ticket> =>

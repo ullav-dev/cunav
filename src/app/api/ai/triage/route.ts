@@ -6,7 +6,7 @@
 // SendToTograModal. See CLAUDE.md "AI Enabled Queues" for the full design.
 import { NextRequest, NextResponse } from "next/server";
 import { generateText } from "ai";
-import { getTicket, updateTicket } from "@/lib/cunav-api";
+import { getTicket, listTickets, updateTicket } from "@/lib/cunav-api";
 import { getJob, createWorkflow, createWorkflowFromTemplate, updateWorkflow } from "@/lib/awe-api";
 import { createNote } from "@/lib/notes-api";
 import { getAiServiceToken } from "@/lib/ai-service-auth";
@@ -38,15 +38,39 @@ function extractJson(text: string): string {
   return start >= 0 && end > start ? text.slice(start, end + 1) : text;
 }
 
-function buildTicketPrompt(ticket: Ticket): string {
-  return [
+const FEEDBACK_HISTORY_LIMIT = 10;
+
+/** Pulls the most recent human feedback (with a reason) left on other tickets in the
+ *  same queue, so the model can learn from past corrections. Scoped per-queue since
+ *  each queue is a different triage domain. Filtered/sorted client-side rather than
+ *  via a new server-side query param — queue-sized ticket lists are small enough that
+ *  this isn't worth the extra API surface (v1: one structured call, no retrieval infra). */
+async function buildFeedbackContext(token: string, jobId: string): Promise<string[]> {
+  const tickets = await listTickets(token, { job_id: jobId });
+  return tickets
+    .filter((t) => !!t.ai_outcome_feedback_reason && !!t.ai_outcome_feedback)
+    .sort((a, b) => new Date(b.ai_outcome_feedback_at ?? 0).getTime() - new Date(a.ai_outcome_feedback_at ?? 0).getTime())
+    .slice(0, FEEDBACK_HISTORY_LIMIT)
+    .map((t) => `- [${t.ai_outcome_feedback}] "${t.name}": ${t.ai_outcome_feedback_reason}`);
+}
+
+function buildTicketPrompt(ticket: Ticket, feedbackContext: string[]): string {
+  const lines = [
     `Ticket: ${ticket.name}`,
     `Type: ${ticket.ticket_type ?? "unspecified"}`,
     `Priority: ${ticket.priority ?? "unspecified"}`,
     "",
     "Description:",
     ticket.description?.trim() || "(no description provided)",
-  ].join("\n");
+  ];
+  if (feedbackContext.length > 0) {
+    lines.push(
+      "",
+      "Prior human feedback on AI triage in this queue (most recent first) — use this to avoid repeating past mistakes:",
+      ...feedbackContext
+    );
+  }
+  return lines.join("\n");
 }
 
 async function runTriageDecision(ticketPrompt: string): Promise<TriageDecision> {
@@ -173,7 +197,8 @@ export async function POST(req: NextRequest) {
     // "the whole triage + routing flow" to a single request round-trip.
     await updateTicket(token, ticket.id, { ai_processed_at: new Date().toISOString() });
 
-    const decision = await runTriageDecision(buildTicketPrompt(ticket));
+    const feedbackContext = await buildFeedbackContext(token, ticket.job_id).catch(() => []);
+    const decision = await runTriageDecision(buildTicketPrompt(ticket, feedbackContext));
 
     // Surfacing the model's self-reported confidence (and the routing verdict
     // it fed into) lets a human glance at past tickets and judge whether this

@@ -105,6 +105,8 @@ export interface Workflow {
   ai_outcome_feedback: AiOutcomeFeedback | null;
   ai_outcome_feedback_by: string | null;
   ai_outcome_feedback_at: string | null;
+  ai_outcome_feedback_reason: string | null;
+  ai_outcome_feedback_note_id: string | null;
 }
 
 export type AiOutcomeFeedback = "helpful" | "unhelpful";

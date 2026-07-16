@@ -21,6 +21,7 @@ import NotesPanel from "@/components/notes/NotesPanel";
 import WikipediaExplorer from "@/components/WikipediaExplorer";
 import AiChatExplorer from "@/components/AiChatExplorer";
 import SendToTograModal from "@/components/SendToTograModal";
+import FeedbackReasonModal from "@/components/FeedbackReasonModal";
 import { useAppUrls } from "@/contexts/AppUrlsContext";
 import { useResize } from "@/hooks/useResize";
 import ReactMarkdown from "react-markdown";
@@ -59,6 +60,7 @@ export default function TicketDetailPage() {
   const [mainTab, setMainTab] = useState<MainTab>("details");
   const [explorerTab, setExplorerTab] = useState<ExplorerTab>("notes");
   const [showSendToTogra, setShowSendToTogra] = useState(false);
+  const [feedbackDialog, setFeedbackDialog] = useState<"helpful" | "unhelpful" | null>(null);
   const [aiBannerDismissed, setAiBannerDismissed] = useState(false);
   const { tograUrl } = useAppUrls();
   const titleRef = useRef<HTMLInputElement>(null);
@@ -230,14 +232,14 @@ export default function TicketDetailPage() {
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-slate-400 mr-0.5">Was this helpful?</span>
             <button
-              onClick={() => patch({ ai_outcome_feedback: "helpful" })}
+              onClick={() => setFeedbackDialog("helpful")}
               title="Helpful"
               className={`text-sm px-1.5 py-0.5 rounded transition-colors ${ticket.ai_outcome_feedback === "helpful" ? "bg-emerald-100" : "hover:bg-white"}`}
             >
               👍
             </button>
             <button
-              onClick={() => patch({ ai_outcome_feedback: "unhelpful" })}
+              onClick={() => setFeedbackDialog("unhelpful")}
               title="Unhelpful"
               className={`text-sm px-1.5 py-0.5 rounded transition-colors ${ticket.ai_outcome_feedback === "unhelpful" ? "bg-red-100" : "hover:bg-white"}`}
             >
@@ -552,6 +554,15 @@ export default function TicketDetailPage() {
           ticket={ticket}
           onClose={() => setShowSendToTogra(false)}
           onSent={handleTograSent}
+        />
+      )}
+
+      {feedbackDialog && ticket && (
+        <FeedbackReasonModal
+          ticket={ticket}
+          feedback={feedbackDialog}
+          onClose={() => setFeedbackDialog(null)}
+          onSubmitted={(updated) => setTicket(updated)}
         />
       )}
     </div>
