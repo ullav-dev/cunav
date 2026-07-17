@@ -77,6 +77,17 @@ export interface Job {
   ai_togra_job_id: string | null;
   ai_togra_template_id: string | null;
   ai_route_confidence_threshold: number;
+  /** Generic per-outcome-type enable/threshold config, one entry per registered
+   *  AI outcome type (see src/lib/ai-outcomes/). route_to_togra's destination
+   *  config stays in the ai_togra_* columns above — this only carries
+   *  enabled/threshold (plus any non-relational per-type settings). */
+  ai_rules: AiOutcomeRuleConfig[];
+}
+
+export interface AiOutcomeRuleConfig {
+  type: string;
+  enabled: boolean;
+  confidence_threshold: number;
 }
 
 // ── Workflows / Tickets ───────────────────────────────────────────────────────
@@ -110,6 +121,28 @@ export interface Workflow {
 }
 
 export type AiOutcomeFeedback = "helpful" | "unhelpful";
+
+// ── AI ticket outcomes (one row per proposed outcome per ticket) ─────────────
+// Generalizes the ai_confidence/ai_should_route pair above, which only fit a
+// single outcome type, into one row per outcome type the triage webhook
+// proposed for a ticket — see src/lib/ai-outcomes/.
+
+export interface AiTicketOutcome {
+  id: string;
+  workflow_id: string;
+  outcome_type: string;
+  confidence: number;
+  executed: boolean;
+  execution_error: string | null;
+  related_workflow_id: string | null;
+  detail: string | null;
+  note_id: string | null;
+  feedback: AiOutcomeFeedback | null;
+  feedback_by: string | null;
+  feedback_at: string | null;
+  feedback_reason: string | null;
+  created_at: string;
+}
 
 // ── Cunav-specific ticket extensions ─────────────────────────────────────────
 // These fields are added to the workflows table by cunav's awe-server migration.

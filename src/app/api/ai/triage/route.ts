@@ -1,19 +1,24 @@
 // AI triage webhook — called by awe-server (fire-and-forget) whenever a ticket
-// lands in an AI-enabled queue. Runs a single structured LLM call to produce an
-// analysis + routing recommendation, posts the analysis as a note, and — above
-// the queue's configured confidence threshold — auto-creates the matching Togra
-// story, the same three choices (project/job/template) a human picks by hand in
-// SendToTograModal. See CLAUDE.md "AI Enabled Queues" for the full design.
+// lands in an AI-enabled queue. Runs a single structured LLM call to propose a
+// set of candidate outcomes (each with its own confidence), then dispatches
+// each proposed outcome to its registered executor (src/lib/ai-outcomes/) if
+// the queue has that rule enabled and confidence clears its threshold. Every
+// proposed outcome — executed or not — is persisted as its own
+// ai_ticket_outcomes row so eval queries can see confidence on outcomes that
+// weren't acted on too. See CLAUDE.md "AI Enabled Queues" for the full design.
 import { NextRequest, NextResponse } from "next/server";
-import { generateText } from "ai";
-import { getTicket, listTickets, updateTicket } from "@/lib/cunav-api";
-import { getJob, createWorkflow, createWorkflowFromTemplate, updateWorkflow } from "@/lib/awe-api";
+import { generateObject } from "ai";
+import { z } from "zod";
+import { getTicket, listTickets, updateTicket, createTicketOutcome } from "@/lib/cunav-api";
+import { getJob } from "@/lib/awe-api";
 import { createNote } from "@/lib/notes-api";
 import { getAiServiceToken } from "@/lib/ai-service-auth";
 import { getAiModel, AiProviderNotConfiguredError } from "@/lib/ai-provider";
 import type { AiProvider } from "@/lib/ai-settings";
-import type { Ticket, Job } from "@/lib/types";
-import { AI_ANALYSIS_NOTE_TITLE, AI_AUTOROUTE_NOTE_TITLE } from "@/lib/types";
+import type { Ticket, Queue, AiOutcomeRuleConfig } from "@/lib/types";
+import { AI_ANALYSIS_NOTE_TITLE } from "@/lib/types";
+import { AI_OUTCOME_REGISTRY, getOutcomeDefinition } from "@/lib/ai-outcomes/registry";
+import { ROUTE_TO_TOGRA_TYPE } from "@/lib/ai-outcomes/route-to-togra";
 
 const TRIAGE_PROVIDER = (process.env.AI_TRIAGE_PROVIDER as AiProvider | undefined) ?? "anthropic";
 const TRIAGE_MODEL = process.env.AI_TRIAGE_MODEL;
@@ -21,22 +26,24 @@ const TRIAGE_MODEL = process.env.AI_TRIAGE_MODEL;
 const TRIAGE_SYSTEM_PROMPT = `You are an AI triage assistant for a customer support ticket queue. For each incoming ticket:
 
 1. Write a short (2-4 sentence) analysis: likely root cause or category, whether it looks like a duplicate or known pattern, and a recommended next step for the support team.
-2. Decide whether the ticket is clear and well-formed enough to auto-route into the team's project tracker without a human triaging it first, and how confident you are in that decision (0.0-1.0). Only recommend routing when the report has enough detail to act on — vague, ambiguous, or incomplete reports should not be routed.
+2. For each possible outcome type below, decide how confident you are (0.0-1.0) that it applies to this ticket, following that outcome type's specific guidance. Outcome types are not mutually exclusive — a well-formed ticket can also look like a duplicate of other work, for example.
 
-Respond with ONLY a JSON object, no other text, in exactly this shape:
-{"analysis": string, "should_route": boolean, "confidence": number}`;
+Outcome types you may propose:
+${AI_OUTCOME_REGISTRY.map((o) => `- "${o.type}": ${o.promptGuidance}`).join("\n\n")}
 
-interface TriageDecision {
-  analysis: string;
-  should_route: boolean;
-  confidence: number;
-}
+Only include an outcome type in your response if you have a genuine, non-zero view on it. Respond with ONLY a JSON object matching the required schema, no other text.`;
 
-function extractJson(text: string): string {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  return start >= 0 && end > start ? text.slice(start, end + 1) : text;
-}
+const TriageResultSchema = z.object({
+  analysis: z.string(),
+  outcomes: z.array(
+    z.object({
+      type: z.enum(AI_OUTCOME_REGISTRY.map((o) => o.type) as [string, ...string[]]),
+      confidence: z.number().min(0).max(1),
+    })
+  ),
+});
+
+type TriageResult = z.infer<typeof TriageResultSchema>;
 
 const FEEDBACK_HISTORY_LIMIT = 10;
 
@@ -44,7 +51,10 @@ const FEEDBACK_HISTORY_LIMIT = 10;
  *  same queue, so the model can learn from past corrections. Scoped per-queue since
  *  each queue is a different triage domain. Filtered/sorted client-side rather than
  *  via a new server-side query param — queue-sized ticket lists are small enough that
- *  this isn't worth the extra API surface (v1: one structured call, no retrieval infra). */
+ *  this isn't worth the extra API surface (v1: one structured call, no retrieval infra).
+ *  Still reads the ticket-wide ai_outcome_feedback* columns rather than per-outcome
+ *  feedback — generalizing this to per-outcome-type feedback lands alongside the
+ *  second registered outcome type, which is also when it starts to matter. */
 async function buildFeedbackContext(token: string, jobId: string): Promise<string[]> {
   const tickets = await listTickets(token, { job_id: jobId });
   return tickets
@@ -73,82 +83,26 @@ function buildTicketPrompt(ticket: Ticket, feedbackContext: string[]): string {
   return lines.join("\n");
 }
 
-async function runTriageDecision(ticketPrompt: string): Promise<TriageDecision> {
+async function runTriageDecision(ticketPrompt: string): Promise<TriageResult> {
   const model = getAiModel(TRIAGE_PROVIDER, TRIAGE_MODEL);
-  const { text } = await generateText({
-    model,
-    system: TRIAGE_SYSTEM_PROMPT,
-    prompt: ticketPrompt,
-  });
-
   try {
-    const parsed = JSON.parse(extractJson(text));
+    const { object } = await generateObject({
+      model,
+      schema: TriageResultSchema,
+      system: TRIAGE_SYSTEM_PROMPT,
+      prompt: ticketPrompt,
+    });
+    return object;
+  } catch (err) {
+    // Model didn't return a schema-valid response — still surface that the
+    // ticket was looked at rather than dropping it, but propose no outcomes
+    // (never act on an unparseable decision).
+    console.error("AI triage: generateObject failed:", err);
     return {
-      analysis: typeof parsed.analysis === "string" ? parsed.analysis : text,
-      should_route: parsed.should_route === true,
-      confidence: typeof parsed.confidence === "number" ? Math.min(1, Math.max(0, parsed.confidence)) : 0,
+      analysis: "AI triage could not produce a structured analysis for this ticket.",
+      outcomes: [],
     };
-  } catch {
-    // Model didn't return parseable JSON — still surface its text as the analysis
-    // rather than dropping it, but never auto-route on an unparseable decision.
-    return { analysis: text, should_route: false, confidence: 0 };
   }
-}
-
-/** Creates the Togra story for `ticket` in the queue's configured project/job(/template),
- *  links it back onto the ticket, and posts a note recording the auto-route. Mirrors
- *  the manual flow in SendToTograModal + the ticket page's handleTograSent. */
-async function routeToTogra(token: string, ticket: Ticket, queue: Job): Promise<string> {
-  const projectId = queue.ai_togra_project_id!;
-  const jobId = queue.ai_togra_job_id!;
-  const templateId = queue.ai_togra_template_id;
-
-  const backlink = `\n\n---\n*Cunav ticket: ${ticket.ticket_number ? `#${ticket.ticket_number}` : ticket.id}*`;
-  const description = (ticket.description ?? "").trim() + backlink;
-
-  let created;
-  if (templateId) {
-    created = await createWorkflowFromTemplate(token, jobId, templateId);
-    created = await updateWorkflow(token, created.id, {
-      name: ticket.name,
-      description,
-      ticket_type: ticket.ticket_type ?? undefined,
-      priority: ticket.priority ?? undefined,
-      is_shared: true,
-    });
-  } else {
-    // Must NOT send ticket_type on the initial create: awe-server's create_workflow
-    // treats any ticket_type-bearing request as a cunav ticket that has to land in
-    // a queue-type job, and 400s when job_id (here, a Togra backlog/sprint) isn't
-    // one. Create the plain Togra story first, then set ticket_type/priority via
-    // a follow-up PATCH — same two-step shape the template branch above already uses.
-    created = await createWorkflow(token, {
-      name: ticket.name,
-      description,
-      job_id: jobId,
-      is_shared: true,
-    });
-    created = await updateWorkflow(token, created.id, {
-      ticket_type: ticket.ticket_type ?? undefined,
-      priority: ticket.priority ?? undefined,
-    });
-  }
-
-  await updateTicket(token, ticket.id, {
-    togra_workflow_id: created.id,
-    togra_project_id: projectId,
-    status: "In Progress",
-  });
-
-  await createNote(token, {
-    entity_type: "workflow",
-    entity_id: ticket.id,
-    title: AI_AUTOROUTE_NOTE_TITLE,
-    body: `Story created automatically by AI triage. Togra workflow ID: \`${created.id}\``,
-    is_shared: true,
-  });
-
-  return created.id;
 }
 
 export async function POST(req: NextRequest) {
@@ -183,7 +137,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "skipped", reason: "ticket has no queue" });
     }
 
-    const queue = await getJob(token, ticket.job_id);
+    const queue = (await getJob(token, ticket.job_id)) as Queue;
     if (!queue.ai_enabled) {
       return NextResponse.json({ status: "skipped", reason: "queue is not AI-enabled" });
     }
@@ -191,22 +145,24 @@ export async function POST(req: NextRequest) {
     // Claim the ticket before doing any real work. awe-server's dispatch is
     // fire-and-forget and can fire twice for the same ticket (e.g. create
     // immediately followed by a queue move) — claiming up front, not after the
-    // LLM call + routing, keeps two racing webhook calls from both deciding to
-    // route and creating duplicate Togra stories. Not a fully atomic claim
-    // (no compare-and-set on the server), but it shrinks the race window from
-    // "the whole triage + routing flow" to a single request round-trip.
+    // LLM call + outcome dispatch, keeps two racing webhook calls from both
+    // acting on the same ticket. Not a fully atomic claim (no compare-and-set
+    // on the server), but it shrinks the race window from "the whole triage +
+    // dispatch flow" to a single request round-trip.
     await updateTicket(token, ticket.id, { ai_processed_at: new Date().toISOString() });
 
     const feedbackContext = await buildFeedbackContext(token, ticket.job_id).catch(() => []);
     const decision = await runTriageDecision(buildTicketPrompt(ticket, feedbackContext));
 
-    // Surfacing the model's self-reported confidence (and the routing verdict
-    // it fed into) lets a human glance at past tickets and judge whether this
-    // ticket type/description tends to produce trustworthy confidence scores —
-    // useful signal for tuning how tickets are framed or which model/threshold
-    // a queue should use.
-    const confidencePct = Math.round(decision.confidence * 100);
-    const analysisBody = `${decision.analysis}\n\n---\n*AI confidence: ${confidencePct}% — ${decision.should_route ? "recommended routing" : "did not recommend routing"}*`;
+    // Surfacing the model's self-reported confidence per outcome type lets a
+    // human glance at past tickets and judge whether this ticket type/
+    // description tends to produce trustworthy confidence scores.
+    const outcomeSummary = decision.outcomes
+      .map((o) => `${getOutcomeDefinition(o.type)?.label ?? o.type}: ${Math.round(o.confidence * 100)}%`)
+      .join(" · ");
+    const analysisBody = outcomeSummary
+      ? `${decision.analysis}\n\n---\n*AI confidence — ${outcomeSummary}*`
+      : decision.analysis;
 
     await createNote(token, {
       entity_type: "workflow",
@@ -216,29 +172,62 @@ export async function POST(req: NextRequest) {
       is_shared: true,
     });
 
-    // Store the decision as queryable columns (not just inside the note's
-    // markdown body) so an eval script can join confidence against outcomes
-    // without scraping note text. Also surfaces that the ticket has been
-    // looked at via the status transition — routeToTogra below applies the
-    // same transition again when it additionally auto-routes.
-    await updateTicket(token, ticket.id, {
-      status: "In Progress",
-      ai_confidence: decision.confidence,
-      ai_should_route: decision.should_route,
-    });
+    const ruleConfigs: AiOutcomeRuleConfig[] = Array.isArray(queue.ai_rules) ? queue.ai_rules : [];
+    let routeToTograExecuted = false;
+    let routeToTograConfidence: number | null = null;
 
-    let routed = false;
-    const canRoute =
-      decision.should_route &&
-      decision.confidence >= queue.ai_route_confidence_threshold &&
-      !!queue.ai_togra_project_id &&
-      !!queue.ai_togra_job_id;
-    if (canRoute) {
-      await routeToTogra(token, ticket, queue);
-      routed = true;
+    for (const proposed of decision.outcomes) {
+      const definition = getOutcomeDefinition(proposed.type);
+      if (!definition) continue; // model proposed a type we have no module for — ignore
+
+      const rule = ruleConfigs.find((r) => r.type === proposed.type);
+      const threshold = rule?.confidence_threshold ?? definition.defaultConfidenceThreshold;
+      // Outcome types require explicit per-queue opt-in — an outcome type with
+      // no rule entry at all is treated as disabled, not "on by default".
+      const eligible = (rule?.enabled ?? false) && proposed.confidence >= threshold;
+
+      let result: { executed: boolean; detail?: string; relatedWorkflowId?: string; noteId?: string } = {
+        executed: false,
+      };
+      let executionError: string | undefined;
+      if (eligible) {
+        try {
+          result = await definition.run({ token, ticket, queue, confidence: proposed.confidence });
+        } catch (err) {
+          executionError = err instanceof Error ? err.message : String(err);
+          console.error(`AI triage: outcome executor "${proposed.type}" failed for ticket ${ticket.id}:`, err);
+        }
+      }
+
+      await createTicketOutcome(token, ticket.id, {
+        outcome_type: proposed.type,
+        confidence: proposed.confidence,
+        executed: result.executed,
+        execution_error: executionError,
+        related_workflow_id: result.relatedWorkflowId,
+        detail: result.detail,
+        note_id: result.noteId,
+      }).catch((err) => console.error("AI triage: failed to persist outcome row:", err));
+
+      if (proposed.type === ROUTE_TO_TOGRA_TYPE) {
+        routeToTograConfidence = proposed.confidence;
+        routeToTograExecuted = result.executed;
+      }
     }
 
-    return NextResponse.json({ status: "processed", routed, confidence: decision.confidence });
+    // Back-compat: keep the pre-multi-outcome columns populated so existing
+    // eval queries against workflows.ai_confidence/ai_should_route keep
+    // working. ai_should_route now reflects whether routing actually executed
+    // rather than the model's raw pre-threshold recommendation — a small
+    // semantic shift, but the closer of the two to what these columns were
+    // used for in practice.
+    await updateTicket(token, ticket.id, {
+      status: "In Progress",
+      ai_confidence: routeToTograConfidence ?? undefined,
+      ai_should_route: routeToTograConfidence != null ? routeToTograExecuted : undefined,
+    });
+
+    return NextResponse.json({ status: "processed", routed: routeToTograExecuted });
   } catch (err) {
     if (err instanceof AiProviderNotConfiguredError) {
       return NextResponse.json({ error: err.message }, { status: 400 });

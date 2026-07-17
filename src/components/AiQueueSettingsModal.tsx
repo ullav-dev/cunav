@@ -2,7 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { updateQueue } from "@/lib/cunav-api";
-import type { Queue } from "@/lib/types";
+import type { AiOutcomeRuleConfig, Queue } from "@/lib/types";
+import { AI_OUTCOME_META } from "@/lib/ai-outcomes/registry-meta";
+
+// Matches route-to-togra.ts's ROUTE_TO_TOGRA_TYPE. Not imported from that
+// module — see registry-meta.ts's comment on why this file avoids importing
+// from outcome-executor modules, which may pull in server-only dependencies.
+const ROUTE_TO_TOGRA_TYPE = "route_to_togra";
 
 interface Project {
   id: string;
@@ -44,6 +50,14 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
   const [selectedProject, setSelectedProject] = useState(queue.ai_togra_project_id ?? "");
   const [selectedJob, setSelectedJob] = useState(queue.ai_togra_job_id ?? "");
   const [selectedTemplate, setSelectedTemplate] = useState(queue.ai_togra_template_id ?? "");
+
+  // Rule config for every registered outcome type OTHER than route_to_togra
+  // (which keeps its bespoke Togra-picker UI below). Rendered generically so a
+  // newly-registered outcome type gets a settings row here with no changes to
+  // this component — see registry-meta.ts.
+  const [otherRuleConfigs, setOtherRuleConfigs] = useState<AiOutcomeRuleConfig[]>(() =>
+    (queue.ai_rules ?? []).filter((r) => r.type !== ROUTE_TO_TOGRA_TYPE)
+  );
 
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingJobs, setLoadingJobs] = useState(false);
@@ -91,12 +105,21 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
   async function handleSave() {
     setSaving(true); setError(null);
     try {
+      const ai_rules: AiOutcomeRuleConfig[] = [
+        {
+          type: ROUTE_TO_TOGRA_TYPE,
+          enabled: aiEnabled && !!selectedProject && !!selectedJob,
+          confidence_threshold: confidence,
+        },
+        ...otherRuleConfigs,
+      ];
       const updated = await updateQueue(token, queue.id, {
         ai_enabled: aiEnabled,
         ai_togra_project_id: selectedProject || null,
         ai_togra_job_id: selectedJob || null,
         ai_togra_template_id: selectedTemplate || null,
         ai_route_confidence_threshold: confidence,
+        ai_rules,
       });
       onSaved(updated);
       onClose();
@@ -105,6 +128,20 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
     } finally {
       setSaving(false);
     }
+  }
+
+  const otherOutcomeMeta = AI_OUTCOME_META.filter((m) => m.type !== ROUTE_TO_TOGRA_TYPE);
+
+  function setOtherRule(type: string, patch: Partial<AiOutcomeRuleConfig>) {
+    setOtherRuleConfigs((prev) => {
+      const meta = AI_OUTCOME_META.find((m) => m.type === type);
+      const existing = prev.find((r) => r.type === type) ?? {
+        type,
+        enabled: false,
+        confidence_threshold: meta?.defaultConfidenceThreshold ?? 0.6,
+      };
+      return [...prev.filter((r) => r.type !== type), { ...existing, ...patch }];
+    });
   }
 
   return (
@@ -175,6 +212,41 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
                   Below this confidence, the AI only posts its analysis and leaves routing to a human.
                 </p>
               </div>
+
+              {otherOutcomeMeta.map((meta) => {
+                const config = otherRuleConfigs.find((r) => r.type === meta.type);
+                const enabled = config?.enabled ?? false;
+                const threshold = config?.confidence_threshold ?? meta.defaultConfidenceThreshold;
+                return (
+                  <div key={meta.type} className="border-t border-slate-100 pt-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={(e) => setOtherRule(meta.type, { enabled: e.target.checked })}
+                        className="rounded border-slate-300 text-violet-600 focus:ring-violet-400"
+                      />
+                      <span className="text-sm font-medium text-slate-700">{meta.label}</span>
+                    </label>
+                    {enabled && (
+                      <div className="mt-2">
+                        <label className="block text-xs font-medium text-slate-600 mb-1">
+                          Confidence threshold: <span className="text-violet-700">{Math.round(threshold * 100)}%</span>
+                        </label>
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={threshold}
+                          onChange={(e) => setOtherRule(meta.type, { confidence_threshold: parseFloat(e.target.value) })}
+                          className="w-full accent-violet-600"
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </>
           )}
 

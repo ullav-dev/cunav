@@ -13,7 +13,7 @@ either one makes dispatch a silent no-op (no error, no log line) rather than fai
 **awe-server** (see its README's Environment Variables section):
 - `CUNAV_AI_WEBHOOK_URL` — pointed at this app's `/api/ai/triage`
 - `CUNAV_AI_WEBHOOK_SECRET` — shared secret, must match the value below
-- migration `051_ai_enabled_queues.sql` applied
+- migrations `051_ai_enabled_queues.sql` and `058_ai_ticket_outcomes.sql` applied
 
 **cunav** (this app):
 
@@ -30,55 +30,90 @@ Plus, per queue you want to enable:
 - Toggle `ai_enabled` on the queue in the admin UI (this is a DB flag, independent of the env vars
   above, and also gates dispatch silently if left off).
 - Optionally configure a Togra project/job/template on the queue (`AiQueueSettingsModal`) to allow
-  auto-routing above `ai_route_confidence_threshold`; without one, tickets are still triaged and
-  the analysis posted as a note, but never auto-routed.
+  auto-routing above its confidence threshold; without one, tickets are still triaged and the
+  analysis posted as a note, but never auto-routed. This is one of possibly several outcome types a
+  queue can enable — see "Pluggable outcome types" below.
+
+### Pluggable outcome types
+
+The triage LLM call proposes a set of candidate outcomes (not a single yes/no decision) — each
+outcome type is its own module under `src/lib/ai-outcomes/`, registered in `registry.ts`. Whether
+an outcome type actually executes for a given queue is controlled by `jobs.ai_rules`, a JSONB array
+with one entry per registered type: `[{"type": "route_to_togra", "enabled": true,
+"confidence_threshold": 0.7}]`. An outcome type with no entry (or `enabled: false`) never executes,
+regardless of confidence — opt-in is per-queue and explicit. `AiQueueSettingsModal` renders a
+generic enabled+threshold row for every registered type it doesn't already have bespoke UI for, so
+a newly-registered outcome type gets a settings row automatically.
+
+Today `route_to_togra` is the only registered type; its Togra destination (project/job/template)
+lives in the dedicated `ai_togra_*` columns rather than in `ai_rules`, since those are FK-backed
+references best kept as real columns. A new outcome type is one new file under
+`src/lib/ai-outcomes/` implementing `AiOutcomeDefinition` plus one line in `registry.ts` (and
+`registry-meta.ts` for its settings-UI label) — no changes needed to the webhook, the LLM schema,
+or the settings modal.
 
 Deploying via Helm? See `ullav-helm/README.md`'s "AI Enabled Queues" section for the chart values
 that map to the variables above.
 
 ## AI Confidence & Evals
 
-Every triage run produces a structured decision — `{analysis, should_route, confidence}` — from a
-single LLM call (`src/app/api/ai/triage/route.ts`). `confidence` (0.0–1.0) and `should_route` are
-entirely self-reported by the model; there's no separate scoring or calibration step. Both are
-required, alongside `should_route === true`, for auto-routing:
+Every triage run produces `{analysis, outcomes: [{type, confidence}]}` from a single structured
+LLM call (`generateObject` + Zod, `src/app/api/ai/triage/route.ts`) — the model proposes a
+confidence per outcome type it has a view on, not a single yes/no decision; outcome types aren't
+mutually exclusive (a ticket can plausibly warrant more than one). `confidence` (0.0–1.0) is
+entirely self-reported by the model; there's no separate scoring or calibration step. An outcome
+executes only when its queue's `ai_rules` entry has `enabled: true` *and* the reported confidence
+clears that entry's `confidence_threshold`:
 
 ```
-canRoute = should_route && confidence >= queue.ai_route_confidence_threshold
-                        && queue has a Togra project + job configured
+rule = queue.ai_rules.find(r => r.type === outcomeType)
+eligible = rule?.enabled && confidence >= (rule?.confidence_threshold ?? outcomeType.defaultConfidenceThreshold)
 ```
 
-`ai_route_confidence_threshold` (default `0.7`) is a per-queue setting, editable via
-`AiQueueSettingsModal`'s slider — different queues can require different confidence to auto-route,
-or set it to `0` to auto-route on `should_route` alone regardless of confidence.
+Each outcome type's threshold defaults if the queue has no `ai_rules` entry for it yet, but
+`enabled` never defaults to true — per-queue opt-in is explicit, not automatic. For
+`route_to_togra` specifically, its executor additionally requires a Togra project + job configured
+on the queue (`ai_togra_project_id`/`ai_togra_job_id`) regardless of the rule being enabled.
 
-**Where confidence is surfaced:**
-- Human-readable, in the "AI Analysis" note's body (e.g. *"AI confidence: 82% — recommended
-  routing"*).
-- As queryable columns on the ticket, set at the same time as the note (awe-server migration
-  `053_ai_outcome_feedback.sql`): `ai_confidence` (REAL) and `ai_should_route` (BOOLEAN) — so
-  confidence trends can be queried directly instead of parsed out of note text.
+**Where outcomes are surfaced:**
+- Human-readable, in the "AI Analysis" note's body (e.g. *"AI confidence — Auto-route to Togra:
+  82%"*).
+- As one row per proposed outcome in awe-server's `ai_ticket_outcomes` table (migration
+  `058_ai_ticket_outcomes.sql`) — `outcome_type`, `confidence`, `executed`, plus
+  `related_workflow_id`/`detail` for outcome types that reference another ticket. A row is written
+  for every outcome the model proposed, whether or not it cleared the threshold — confidence on an
+  outcome that *wasn't* acted on is still useful for tuning thresholds later.
+- `workflows.ai_confidence`/`ai_should_route` (awe-server migration `053_ai_outcome_feedback.sql`)
+  are still dual-written for the `route_to_togra` outcome specifically, so pre-existing queries
+  against those two columns keep working.
 
 **Human outcome feedback:** once a ticket has been triaged (`ai_processed_at` set), the ticket page
-shows a 👍/👎 strip next to the confidence — a human marks whether the AI's analysis was actually
-useful. This is stored as `ai_outcome_feedback` (`"helpful"` | `"unhelpful"`, unvalidated TEXT like
-`ticket_type`/`priority`) plus `ai_outcome_feedback_by`/`_at`. The `_by`/`_at` fields are always
-derived server-side from the authenticated caller in `update_workflow` — never trusted from the
-request body, for the same reason `reporter_id` is (see git history on that fix).
+shows a 👍/👎 strip — a human marks whether the AI's analysis was actually useful. Today this is
+still the ticket-wide `ai_outcome_feedback` (`"helpful"` | `"unhelpful"`, unvalidated TEXT like
+`ticket_type`/`priority`) plus `ai_outcome_feedback_by`/`_at` on `workflows`. `ai_ticket_outcomes`
+rows also have their own `feedback`/`feedback_by`/`feedback_at`/`feedback_reason` columns
+(settable via `PUT /ai-outcomes/:id/feedback`) for when a ticket has more than one proposed
+outcome and a human wants to judge them independently (e.g. "the duplicate flag was wrong but the
+routing was right") — the ticket page doesn't render per-outcome feedback controls yet; that lands
+alongside the second registered outcome type. The `_by`/`_at` fields are always derived
+server-side from the authenticated caller — never trusted from the request body, for the same
+reason `reporter_id` is (see git history on that fix).
 
 **Why this exists — building eval data:** none of this is graded automatically; it's the minimum
 logging needed to later check whether confidence numbers can be trusted, without inferring
-correctness from status-history heuristics. With confidence + should_route + human feedback all
-queryable per ticket, you can:
-- Bucket tickets by confidence decile and compute `% helpful` per bucket → a calibration curve. A
-  well-calibrated model's 80–100% bucket should be right close to 80–100% of the time; if it isn't,
-  the threshold doesn't mean what the number implies.
+correctness from status-history heuristics. With per-outcome confidence + execution + human
+feedback all queryable in `ai_ticket_outcomes`, you can:
+- Bucket outcomes by confidence decile (per `outcome_type`) and compute `% helpful` per bucket → a
+  calibration curve. A well-calibrated model's 80–100% bucket should be right close to 80–100% of
+  the time; if it isn't, the threshold doesn't mean what the number implies. Doing this per outcome
+  type matters once there's more than one — a model can be well-calibrated on routing and poorly
+  calibrated on a newer outcome type at the same time.
 - Compare models empirically (`AI_TRIAGE_PROVIDER` / `AI_TRIAGE_MODEL` are plain env vars) by
   re-running historical ticket descriptions offline and comparing their decisions against the
   human feedback already collected, instead of assuming a stronger model gives better confidence.
-- Tune `ai_route_confidence_threshold` per queue from data rather than guessing — different queues
-  likely have different ticket quality, so one global default threshold is unlikely to be right
-  everywhere.
+- Tune each queue's per-outcome-type `confidence_threshold` (in `ai_rules`) from data rather than
+  guessing — different queues likely have different ticket quality, so one global default
+  threshold is unlikely to be right everywhere.
 
 There's no eval harness built yet — the columns above are what a future offline script (or
 dashboard) would query. Nothing here blocks or changes triage behavior at runtime; it's purely
