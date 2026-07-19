@@ -55,6 +55,7 @@ function makeQueue(id: string, name = "Queue"): Queue {
     ai_togra_job_id: null,
     ai_togra_template_id: null,
     ai_route_confidence_threshold: 0.7,
+    ai_rules: [],
   };
 }
 

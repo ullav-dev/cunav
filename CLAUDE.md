@@ -121,12 +121,25 @@ dispatched to an AI triage step. Flow:
 2. cunav's webhook (`src/app/api/ai/triage/route.ts`) authenticates via a shared secret
    (`X-AWE-Webhook-Secret`), logs in as a dedicated AI service account
    (`CUNAV_AI_SERVICE_EMAIL`/`PASSWORD`, see `lib/ai-service-auth.ts`), and runs a single
-   structured LLM call producing `{analysis, should_route, confidence}`.
-3. The analysis is always posted as a note. Above the queue's configured
-   `ai_route_confidence_threshold`, and only if the queue has a Togra
-   project/job/template configured (queue admin UI, `AiQueueSettingsModal`), the ticket is
-   auto-routed to Togra the same way `SendToTograModal` does it by hand.
-4. `workflows.ai_processed_at` makes redelivered/racing dispatches a no-op.
+   structured LLM call (`generateObject` + Zod) producing `{analysis, outcomes: [{type,
+   confidence}]}` — the model proposes zero or more candidate outcomes (they aren't
+   mutually exclusive), not a single yes/no routing decision.
+3. The analysis is always posted as a note. Each proposed outcome is dispatched to its
+   registered executor (`src/lib/ai-outcomes/` — one module per outcome type, registered in
+   `registry.ts`) if the queue's `ai_rules` config (JSONB array, one `{type, enabled,
+   confidence_threshold}` entry per outcome type; edited via `AiQueueSettingsModal`) has
+   that rule enabled and the model's confidence clears its threshold. Today the only
+   registered outcome type is `route_to_togra`, which creates/links a Togra story the same
+   way `SendToTograModal` does it by hand — its destination (project/job/template) stays in
+   the dedicated `ai_togra_*` columns rather than `ai_rules`, since those are FK-backed.
+   Adding a new outcome type is one new file under `src/lib/ai-outcomes/` plus one line in
+   `registry.ts` — no changes to the webhook, schema, or settings UI required.
+4. Every proposed outcome (executed or not) is persisted as its own row in awe-server's
+   `ai_ticket_outcomes` table — confidence on an outcome that *wasn't* acted on is still
+   useful eval signal. `workflows.ai_confidence`/`ai_should_route` are still dual-written
+   for back-compat with existing eval queries, tracking the `route_to_togra` outcome
+   specifically.
+5. `workflows.ai_processed_at` makes redelivered/racing dispatches a no-op.
 
 v1 deliberately uses one structured LLM call + deterministic follow-up calls, not an
 autonomous tool-use loop — see the conversation history for the fuller design rationale.

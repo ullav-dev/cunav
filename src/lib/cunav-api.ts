@@ -1,7 +1,7 @@
 // Cunav-specific API calls — ticket CRUD wrapping workflow endpoints,
 // plus queue (job) management.
 
-import type { Ticket, Queue, Job, TicketType, Priority, AiOutcomeFeedback } from "./types";
+import type { Ticket, Queue, Job, TicketType, Priority, AiOutcomeFeedback, AiOutcomeRuleConfig, AiTicketOutcome } from "./types";
 
 const BASE =
   typeof window === "undefined"
@@ -90,6 +90,41 @@ export const updateTicket = (token: string, id: string, patch: UpdateTicketPaylo
 export const deleteTicket = (token: string, id: string): Promise<void> =>
   apiRequest(`/workflows/${id}`, token, { method: "DELETE" });
 
+// ── AI ticket outcomes ─────────────────────────────────────────────────────
+
+export const listTicketOutcomes = (token: string, ticketId: string): Promise<AiTicketOutcome[]> =>
+  apiRequest(`/workflows/${ticketId}/ai-outcomes`, token);
+
+export interface CreateTicketOutcomePayload {
+  outcome_type: string;
+  confidence: number;
+  executed?: boolean;
+  execution_error?: string;
+  related_workflow_id?: string;
+  detail?: string;
+  note_id?: string;
+}
+
+export const createTicketOutcome = (
+  token: string,
+  ticketId: string,
+  payload: CreateTicketOutcomePayload
+): Promise<AiTicketOutcome> =>
+  apiRequest(`/workflows/${ticketId}/ai-outcomes`, token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const updateTicketOutcomeFeedback = (
+  token: string,
+  outcomeId: string,
+  payload: { feedback: AiOutcomeFeedback; feedback_reason?: string }
+): Promise<AiTicketOutcome> =>
+  apiRequest(`/ai-outcomes/${outcomeId}/feedback`, token, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
 // ── Queues (jobs with job_type = "queue") ─────────────────────────────────────
 
 export const listQueues = async (token: string, params?: { team_id?: string }): Promise<Queue[]> => {
@@ -116,6 +151,7 @@ export interface UpdateQueuePayload {
   ai_togra_job_id?: string | null;
   ai_togra_template_id?: string | null;
   ai_route_confidence_threshold?: number;
+  ai_rules?: AiOutcomeRuleConfig[];
 }
 
 export const updateQueue = (
