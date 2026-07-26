@@ -77,8 +77,13 @@ TOGRA_URL=http://localhost:3007        # Togra app (for SSO cross-link)
 OBAIR_URL=http://localhost:3000        # Obair/AWE app
 DAM_BROWSER_URL=http://localhost:3004  # DAM browser
 REPLY_TO_DOMAIN=                       # optional; if set, "Send as email" (below) sets
-                                        # Reply-To: ticket-{number}@REPLY_TO_DOMAIN so a
-                                        # future inbound-email poll can route replies back
+                                        # Reply-To: ticket-{number}@REPLY_TO_DOMAIN, the
+                                        # primary way the inbound-email poll (below)
+                                        # resolves a reply back onto its ticket
+CUNAV_EMAIL_WEBHOOK_SECRET=            # must match awe-runner's env var of the same name;
+                                        # authenticates the inbound-email poll's webhook call
+CUNAV_INBOUND_EMAIL_QUEUE_ID=          # queue a new ticket lands in when an inbound email
+                                        # can't be resolved to an existing ticket
 # Deployment-wide AI provider keys — power ONLY the automated AI Enabled Queues
 # triage webhook below (it has no signed-in user, so it can't use a personal key).
 # The interactive Triage chat panel (AiChatExplorer) never reads these; each
@@ -175,9 +180,43 @@ service. A note can be sent to a ticket's `external_reporter_email` as raw SMTP 
    excludes email, so emailing an internal reporter's own address is out of scope until
    that's revisited.
 
-Inbound email (recognizing a reply and routing it back onto its ticket) is a later phase,
-built on awe-server's generic scheduler primitive (`scheduled_scripts`) rather than this
-task-triggered path, since IMAP polling needs a wall-clock trigger no workflow task has.
+## Inbound Email
+
+Recognizes a reporter's reply and routes it back onto its ticket (or files a new one).
+Built on awe-server's generic scheduler primitive (`scheduled_scripts`), since IMAP
+polling needs a wall-clock trigger no workflow task has — the outbound flow above didn't
+need this because it's triggered by a human action, not a clock.
+
+1. An awe-server `imap` connection (host/port/username config, mailbox password secret)
+   backs a `scheduled_scripts` row (script_type `python`, cron e.g. every 2 minutes) —
+   see `awe-server/docs/work-items/imap_poll.py` for the checked-in script source (the
+   schedule itself is configured through Obair's Schedules UI, not a migration).
+2. The script's only privileged action is one HTTP POST per new message to cunav's
+   `src/app/api/email/inbound/route.ts`, authenticated via a shared secret
+   (`X-Email-Webhook-Secret` / `CUNAV_EMAIL_WEBHOOK_SECRET`) — it does **not** carry an
+   AWE service token, deliberately: a token capable of resolving connection secrets would
+   let any team member who can edit a script body escalate across teams. The webhook URL
+   and secret come from `CUNAV_EMAIL_WEBHOOK_URL`/`CUNAV_EMAIL_WEBHOOK_SECRET`, env vars on
+   awe-runner's own process (inherited by the script subprocess, not stored on the
+   connection — the connection is scoped to mailbox credentials only).
+3. The script persists `{last_uid, uidvalidity, seen_message_ids}` in the schedule's
+   `state` (round-tripped automatically by the scheduler) so it only ever processes a
+   message once — `seen_message_ids` (not just the UID) survives a `UIDVALIDITY` change
+   (mailbox rebuild), which resets UID numbering but not Message-IDs.
+4. cunav's webhook resolves the ticket two ways, in order: the reply-to address
+   (`ticket-{number}@REPLY_TO_DOMAIN`, only usable when that env var is configured — see
+   Outbound Email above) then a `[#{number}]` tag the outbound route stamps onto every
+   subject specifically so this fallback works even without `REPLY_TO_DOMAIN`. Both paths
+   resolve through the existing `GET /references/resolve` endpoint (`cunav::parse_ref`),
+   not a reimplemented regex.
+5. Resolved → posts a note (fixed title `INBOUND_EMAIL_NOTE_TITLE`, dedup on a
+   `Message-ID: ...` line in the note body in case of a redelivered webhook call).
+   Unresolved → creates a new ticket in `CUNAV_INBOUND_EMAIL_QUEUE_ID` with
+   `external_reporter_*` parsed from the `From` header — required env var; without it,
+   unresolved messages are dropped with an error rather than silently discarded.
+6. A per-instance in-memory rate guard (`MAX_NEW_TICKETS_PER_WINDOW` in the route) caps
+   new-ticket creation so a spam flood into the mailbox can't create unbounded tickets.
+   Lives server-side (not in the script) so it can't be bypassed by editing script_body.
 
 ## Personal AI Assistant (BYOK)
 

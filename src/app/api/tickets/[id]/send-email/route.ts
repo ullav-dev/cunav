@@ -72,9 +72,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   const { primary_task: task } = await instRes.json();
 
+  // Tag the subject with the ticket number so a reply can be resolved back to
+  // its ticket even without REPLY_TO_DOMAIN configured (most mail clients
+  // preserve the subject, including this tag, on reply) — see
+  // src/app/api/email/inbound/route.ts's subject-fallback resolution.
+  const taggedSubject = ticket.ticket_number ? `${subject} [#${ticket.ticket_number}]` : subject;
+
   const values: Record<string, string> = {
     to: ticket.external_reporter_email,
-    subject,
+    subject: taggedSubject,
     body,
   };
   if (REPLY_TO_DOMAIN && ticket.ticket_number) {

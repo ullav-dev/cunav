@@ -206,3 +206,7 @@ export interface Note {
 export const AI_ANALYSIS_NOTE_TITLE = "AI Analysis";
 export const AI_AUTOROUTE_NOTE_TITLE = "Auto-routed to Togra";
 export const AI_NOTE_TITLES: readonly string[] = [AI_ANALYSIS_NOTE_TITLE, AI_AUTOROUTE_NOTE_TITLE];
+
+/** Fixed title for notes posted by the inbound-email webhook (src/app/api/email/inbound/route.ts)
+ *  from a reporter's reply — not an AI-authored note, so deliberately not in AI_NOTE_TITLES. */
+export const INBOUND_EMAIL_NOTE_TITLE = "Reply from reporter";

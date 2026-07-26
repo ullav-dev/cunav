@@ -12,6 +12,7 @@ function route(request: NextRequest): NextResponse {
   if (
     pathname.startsWith("/api/ai/") ||
     pathname.startsWith("/api/notify/") ||
+    pathname.startsWith("/api/email/") ||
     /^\/api\/tickets\/[^/]+\/send-email\/?$/.test(pathname)
   ) {
     return NextResponse.next();
