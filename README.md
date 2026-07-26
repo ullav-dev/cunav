@@ -119,6 +119,79 @@ There's no eval harness built yet — the columns above are what a future offlin
 dashboard) would query. Nothing here blocks or changes triage behavior at runtime; it's purely
 recorded for analysis.
 
+## Outbound & Inbound Email
+
+Lets an agent email a ticket's external reporter (someone with no UUM account, e.g. a customer
+who emailed in) and lets that reporter's replies land back on the ticket automatically. Built on
+AWE's generic work-item/connection/scheduler primitives, not a cunav-specific mail service — see
+`CLAUDE.md`'s "Outbound Email" and "Inbound Email" sections for the full design.
+
+Like AI Enabled Queues above, configuration is split across `awe-server` and this app, and a
+missing value on either side is a silent no-op or a 500, not a helpful error.
+
+**awe-server:**
+- `smtp` and `imap` connection types (migrations `061_smtp_connection_and_email_work_item.sql`,
+  `062_imap_connection.sql`) plus `jobs.email_work_item_id` (per-queue "Send Email" work item,
+  configured in cunav's `AiQueueSettingsModal`)
+- A "Send Email" work item (script_type `python`, an `smtp` connection attached) — build it in
+  Obair's work-items UI using `docs/work-items/send_email.py` as the script body
+- For inbound: a `scheduled_scripts` row (script_type `python`, an `imap` connection attached,
+  e.g. `*/2 * * * *`) using `docs/work-items/imap_poll.py` as the script body — build it in Obair's
+  Schedules UI
+- `CUNAV_EMAIL_WEBHOOK_URL` / `CUNAV_EMAIL_WEBHOOK_SECRET` env vars on **awe-server** (inherited by
+  awe-runner's script subprocess, not stored on the connection) — see its `.env.example`
+
+**cunav** (this app):
+
+| Variable | Required | Description |
+|---|---|---|
+| `REPLY_TO_DOMAIN` | no | If set, outbound mail gets a `Reply-To: ticket-{number}@REPLY_TO_DOMAIN`, the primary way a reply is resolved back to its ticket. Without it, resolution falls back to a `[#{number}]` tag stamped onto every outbound subject |
+| `CUNAV_EMAIL_WEBHOOK_SECRET` | yes (for inbound) | Must match awe-server/awe-runner's `CUNAV_EMAIL_WEBHOOK_SECRET`; authenticates `POST /api/email/inbound` |
+| `CUNAV_INBOUND_EMAIL_QUEUE_ID` | yes (for inbound) | Queue a new ticket lands in when an inbound email can't be resolved to an existing ticket |
+| `CUNAV_AI_SERVICE_EMAIL` / `CUNAV_AI_SERVICE_PASSWORD` | yes (for inbound) | Reused from AI Enabled Queues above — the inbound webhook has no signed-in user either, so it logs in as the same service account |
+
+A resolved reply is only ever attached to a ticket if the sender's address matches that ticket's
+`external_reporter_email` — a forwarded or copied `[#N]` tag can't attach one customer's reply to
+another customer's ticket; on a mismatch (or no match at all) the message files as a new ticket
+instead of being dropped.
+
+### Local email testing
+
+None of this needs real mail — two local test servers make it fully exercisable:
+
+- **[MailHog](https://github.com/mailhog/MailHog)** for outbound: `docker run -d -p 1025:1025 -p
+  8025:8025 mailhog/mailhog` — SMTP on `1025`, a web UI to see delivered mail at
+  `http://localhost:8025`. It does **not** speak IMAP, so it can't stand in for inbound.
+- **[GreenMail](https://greenmail-mail-test.github.io/greenmail/)** for inbound (SMTP *and* IMAP,
+  which a real inbound test needs):
+  ```
+  docker run -d -p 3025:3025 -p 3143:3143 \
+    -e GREENMAIL_OPTS='-Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.imap -Dgreenmail.users=tester:testerpass@yourdomain.test -Dgreenmail.hostname=0.0.0.0' \
+    greenmail/standalone:latest
+  ```
+  SMTP on `3025`, IMAP on `3143`. Log in with the **bare username** (`tester`), not the full
+  address — GreenMail's own quirk, not something a real mailbox requires. Port `3143` is plain
+  IMAP (no TLS); `imap_poll.py` only uses `IMAP4_SSL` on port `993`, so a plain test port works
+  with no extra config.
+
+Setup, once both containers are running:
+1. In Obair, create an `smtp` connection pointed at MailHog (`host: localhost`, `port: 1025`, any
+   `username`/secret — MailHog doesn't check them) and attach it to the "Send Email" work item.
+2. Create an `imap` connection pointed at GreenMail (`host: localhost`, `port: 3143`, `username:
+   tester`, secret `testerpass`) and attach it to the inbound scheduled script.
+3. In cunav's Queue settings, set the "Outbound email work item" to "Send Email"; set
+   `CUNAV_INBOUND_EMAIL_QUEUE_ID` to a real queue's id.
+4. Set a ticket's external reporter email, click the mail icon on a note, then check
+   `http://localhost:8025` for the delivered message.
+5. Send a message into GreenMail (`smtplib.SMTP("localhost", 3025)`, `To: tester@yourdomain.test`)
+   — tag the subject with `[#N]` to test the reply-resolution path, or leave it untagged to test
+   new-ticket creation. Either wait for the schedule's own cron tick or trigger it immediately:
+   `POST /scheduled-scripts/{id}/trigger`.
+
+The schedule fires on its cron tick regardless of whether GreenMail (or a real mailbox) is up —
+pause it when you're not actively testing (`PUT /scheduled-scripts/{id}` with `{"is_active":
+false}`) so it doesn't pile up failed runs against a container that's since been stopped.
+
 ## Personal AI Assistant (BYOK)
 
 Separate from the automated triage webhook above: the interactive Triage chat panel

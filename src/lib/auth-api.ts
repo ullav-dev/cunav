@@ -243,6 +243,21 @@ export interface UpdateProfilePayload {
 export const updateProfile = (token: string, data: UpdateProfilePayload): Promise<AuthUser> =>
   authRequest("/users/me", { method: "PATCH", body: JSON.stringify(data) }, token);
 
+// ── Public identity resolution ──────────────────────────────────────────────
+
+export interface ResolvedUser {
+  id: string;
+  username: string;
+  avatar_url: string | null;
+  first_name: string | null;
+  last_name: string | null;
+}
+
+/** Resolve a batch of user ids to their public username/avatar/display-name
+ *  fields. Ids with no matching row are simply omitted from the result. */
+export const resolveUsers = (token: string, ids: string[]): Promise<ResolvedUser[]> =>
+  authRequest(`/users/resolve?ids=${ids.map(encodeURIComponent).join(",")}`, {}, token);
+
 export async function gravatarUrl(email: string, size = 200): Promise<string> {
   const normalized = email.trim().toLowerCase();
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));

@@ -45,6 +45,9 @@ function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
     ai_outcome_feedback_at: null,
     ai_outcome_feedback_reason: null,
     ai_outcome_feedback_note_id: null,
+    external_reporter_first_name: null,
+    external_reporter_last_name: null,
+    external_reporter_email: null,
     ...overrides,
   };
 }
@@ -69,6 +72,7 @@ function makeQueue(overrides: Partial<Queue> = {}): Queue {
     ai_togra_template_id: null,
     ai_route_confidence_threshold: 0.7,
     ai_rules: [],
+    email_work_item_id: null,
     ...overrides,
   };
 }

@@ -60,6 +60,11 @@ export interface CreateTicketPayload {
   ticket_type?: TicketType;
   priority?: Priority;
   is_shared?: boolean;
+  // Reporter with no UUM user row (e.g. a customer emailing in) — independent
+  // of reporter_id, which points at a real UUM user.
+  external_reporter_first_name?: string;
+  external_reporter_last_name?: string;
+  external_reporter_email?: string;
 }
 
 export const createTicket = (token: string, payload: CreateTicketPayload): Promise<Ticket> =>
@@ -82,6 +87,12 @@ export interface UpdateTicketPayload {
   ai_outcome_feedback?: AiOutcomeFeedback;
   ai_outcome_feedback_reason?: string;
   ai_outcome_feedback_note_id?: string;
+  // Reporter with no UUM user row. Omit to leave unchanged; send "" (empty
+  // string, not undefined) to clear a previously-set field — the backend
+  // applies these via COALESCE, so undefined/null both mean "leave as-is".
+  external_reporter_first_name?: string;
+  external_reporter_last_name?: string;
+  external_reporter_email?: string;
 }
 
 export const updateTicket = (token: string, id: string, patch: UpdateTicketPayload): Promise<Ticket> =>
@@ -152,6 +163,7 @@ export interface UpdateQueuePayload {
   ai_togra_template_id?: string | null;
   ai_route_confidence_threshold?: number;
   ai_rules?: AiOutcomeRuleConfig[];
+  email_work_item_id?: string | null;
 }
 
 export const updateQueue = (

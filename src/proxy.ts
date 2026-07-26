@@ -9,7 +9,12 @@ function route(request: NextRequest): NextResponse {
   const { pathname, search } = request.nextUrl;
 
   // Next.js API routes — pass through without rewrite or intl locale prefix.
-  if (pathname.startsWith("/api/ai/") || pathname.startsWith("/api/notify/")) {
+  if (
+    pathname.startsWith("/api/ai/") ||
+    pathname.startsWith("/api/notify/") ||
+    pathname.startsWith("/api/email/") ||
+    /^\/api\/tickets\/[^/]+\/send-email\/?$/.test(pathname)
+  ) {
     return NextResponse.next();
   }
 

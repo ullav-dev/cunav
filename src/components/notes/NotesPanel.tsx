@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { useResize } from "@/hooks/useResize";
 import ReactMarkdown from "react-markdown";
@@ -162,10 +162,11 @@ function NoteThread({ note, token, resolveCreator }: { note: Note; token: string
   );
 }
 
-function NoteView({ note, folders, currentUserId, token, resolveCreator, onEdit, onDelete, onMove, deleting }: {
+function NoteView({ note, folders, currentUserId, token, resolveCreator, onEdit, onDelete, onMove, deleting, extraActions }: {
   note: Note; folders: NoteFolder[]; currentUserId: string; token: string;
   resolveCreator: (id: string, noteTitle?: string) => string;
   onEdit: () => void; onDelete: () => void; onMove: (folderId: string | null) => void; deleting: boolean;
+  extraActions?: (note: Note) => ReactNode;
 }) {
   const t = useTranslations("notes");
   const isOwner = note.created_by === currentUserId;
@@ -182,16 +183,19 @@ function NoteView({ note, folders, currentUserId, token, resolveCreator, onEdit,
               : <span className="text-xs text-slate-400">{t("private")}</span>}
           </div>
         </div>
-        {isOwner && (
-          <div className="flex items-center gap-1 shrink-0">
-            <button onClick={onEdit} className="p-1.5 text-slate-400 hover:text-slate-700 transition-colors rounded" title="Edit">
-              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-current"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm1.414 1.06a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354l-1.086-1.086ZM11.189 6.25 9.75 4.81l-6.286 6.287a.25.25 0 0 0-.064.108l-.558 1.953 1.953-.558a.25.25 0 0 0 .108-.064L11.19 6.25Z"/></svg>
-            </button>
-            <button onClick={onDelete} disabled={deleting} className="p-1.5 text-slate-400 hover:text-red-500 disabled:opacity-40 transition-colors rounded" title="Delete">
-              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-current"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z"/></svg>
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-1 shrink-0">
+          {extraActions?.(note)}
+          {isOwner && (
+            <>
+              <button onClick={onEdit} className="p-1.5 text-slate-400 hover:text-slate-700 transition-colors rounded" title="Edit">
+                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-current"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm1.414 1.06a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354l-1.086-1.086ZM11.189 6.25 9.75 4.81l-6.286 6.287a.25.25 0 0 0-.064.108l-.558 1.953 1.953-.558a.25.25 0 0 0 .108-.064L11.19 6.25Z"/></svg>
+              </button>
+              <button onClick={onDelete} disabled={deleting} className="p-1.5 text-slate-400 hover:text-red-500 disabled:opacity-40 transition-colors rounded" title="Delete">
+                <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-current"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z"/></svg>
+              </button>
+            </>
+          )}
+        </div>
       </div>
       {isOwner && folders.length > 0 && (
         <div className="flex items-center gap-1.5">
@@ -230,9 +234,13 @@ interface NotesPanelProps {
   isTeam: boolean;
   compact?: boolean;
   twoColumn?: boolean;
+  /** Extra per-note action buttons rendered next to Edit/Delete (owner-gated actions
+   *  stay in NoteView itself; this is for actions available regardless of ownership,
+   *  e.g. cunav's "Send as email"). */
+  renderNoteActions?: (note: Note) => ReactNode;
 }
 
-export default function NotesPanel({ entityType, entityId, isTeam, compact = false, twoColumn = false, members = [], folderOrientation = "horizontal", autoSelectFirst = false }: NotesPanelProps) {
+export default function NotesPanel({ entityType, entityId, isTeam, compact = false, twoColumn = false, members = [], folderOrientation = "horizontal", autoSelectFirst = false, renderNoteActions }: NotesPanelProps) {
   const { user, token } = useAuth();
   const t = useTranslations("notes");
   const [notes, setNotes] = useState<Note[]>([]);
@@ -402,7 +410,8 @@ export default function NotesPanel({ entityType, entityId, isTeam, compact = fal
       <div className="bg-white rounded-xl border border-slate-200 p-4">
         <NoteView note={selectedNote} folders={folders} currentUserId={currentUserId} resolveCreator={resolveCreator}
           token={token ?? ""} onEdit={() => setMode("edit")} onDelete={() => setConfirmDeleteNote(selectedNote)}
-          onMove={(folderId) => handleMove(selectedNote.id, folderId)} deleting={deletingId === selectedNote.id} />
+          onMove={(folderId) => handleMove(selectedNote.id, folderId)} deleting={deletingId === selectedNote.id}
+          extraActions={renderNoteActions} />
       </div>
     );
     return null;
@@ -551,7 +560,8 @@ export default function NotesPanel({ entityType, entityId, isTeam, compact = fal
         <div className="overflow-y-auto h-full">
           <NoteView note={selectedNote} folders={folders} currentUserId={currentUserId} resolveCreator={resolveCreator}
             token={token ?? ""} onEdit={() => setMode("edit")} onDelete={() => setConfirmDeleteNote(selectedNote)}
-            onMove={(folderId) => handleMove(selectedNote.id, folderId)} deleting={deletingId === selectedNote.id} />
+            onMove={(folderId) => handleMove(selectedNote.id, folderId)} deleting={deletingId === selectedNote.id}
+            extraActions={renderNoteActions} />
         </div>
       );
       return (
