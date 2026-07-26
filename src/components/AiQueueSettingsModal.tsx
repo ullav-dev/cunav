@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { updateQueue } from "@/lib/cunav-api";
+import { listWorkItems, type WorkItemSummary } from "@/lib/awe-api";
 import type { AiOutcomeRuleConfig, Queue } from "@/lib/types";
 import { AI_OUTCOME_META } from "@/lib/ai-outcomes/registry-meta";
 
@@ -59,11 +60,22 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
     (queue.ai_rules ?? []).filter((r) => r.type !== ROUTE_TO_TOGRA_TYPE)
   );
 
+  const [workItems, setWorkItems] = useState<WorkItemSummary[]>([]);
+  const [loadingWorkItems, setLoadingWorkItems] = useState(true);
+  const [emailWorkItemId, setEmailWorkItemId] = useState(queue.email_work_item_id ?? "");
+
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    listWorkItems(token)
+      .then(setWorkItems)
+      .catch(() => setWorkItems([]))
+      .finally(() => setLoadingWorkItems(false));
+  }, [token]);
 
   useEffect(() => {
     fetch("/api/projects", { headers: { Authorization: `Bearer ${token}` } })
@@ -120,6 +132,7 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
         ai_togra_template_id: selectedTemplate || null,
         ai_route_confidence_threshold: confidence,
         ai_rules,
+        email_work_item_id: emailWorkItemId || null,
       });
       onSaved(updated);
       onClose();
@@ -249,6 +262,19 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
               })}
             </>
           )}
+
+          <div className="pt-2 border-t border-slate-100">
+            <label className="block text-sm font-medium text-slate-700 mb-1">Outbound email work item</label>
+            <p className="text-xs text-slate-500 mb-2">
+              Work item instantiated when an agent sends a ticket note as email from this queue.
+              Build/edit it in Obair (Work items).
+            </p>
+            <select value={emailWorkItemId} onChange={(e) => setEmailWorkItemId(e.target.value)} disabled={loadingWorkItems}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-60">
+              <option value="">{loadingWorkItems ? "Loading…" : "None (send-as-email disabled)"}</option>
+              {workItems.map((wi) => <option key={wi.id} value={wi.id}>{wi.name}</option>)}
+            </select>
+          </div>
 
           {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
 

@@ -12,7 +12,7 @@ import { markRead, hasUnreadAiAnalysis, markAiAnalysisRead } from "@/lib/last-re
 import { listQueues } from "@/lib/cunav-api";
 import { createNote } from "@/lib/notes-api";
 import { useRouter } from "@/i18n/navigation";
-import type { Ticket, Queue, Status, TicketType, Priority } from "@/lib/types";
+import type { Ticket, Queue, Status, TicketType, Priority, Note } from "@/lib/types";
 import StatusPill from "@/components/StatusPill";
 import PriorityBadge from "@/components/PriorityBadge";
 import TicketTypeBadge from "@/components/TicketTypeBadge";
@@ -50,6 +50,8 @@ export default function TicketDetailPage() {
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [queues, setQueues] = useState<Queue[]>([]);
+  const [sendingEmailNoteId, setSendingEmailNoteId] = useState<string | null>(null);
+  const [sendEmailError, setSendEmailError] = useState<string | null>(null);
   const [resolvedReporter, setResolvedReporter] = useState<ResolvedUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +176,44 @@ export default function TicketDetailPage() {
   async function handleSaveAsNote(title: string, body: string, isShared = false) {
     if (!token || !ticket) return;
     await createNote(token, { entity_type: "workflow", entity_id: ticket.id, title, body: body || undefined, is_shared: isShared });
+  }
+
+  function renderSendEmailAction(note: Note) {
+    if (!ticket?.external_reporter_email || !note.body) return null;
+    const sending = sendingEmailNoteId === note.id;
+    return (
+      <button
+        onClick={() => handleSendAsEmail(note)}
+        disabled={sending}
+        className="p-1.5 text-slate-400 hover:text-violet-700 disabled:opacity-40 transition-colors rounded"
+        title={`Send as email to ${ticket.external_reporter_email}`}
+      >
+        {sending ? (
+          <div className="w-3.5 h-3.5 border-2 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+        ) : (
+          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-current"><path d="M1.75 3A1.75 1.75 0 0 0 0 4.75v.28l7.686 4.611a.75.75 0 0 0 .628 0L16 5.03v-.28C16 3.784 15.216 3 14.25 3H1.75ZM16 6.68 9.03 10.83a2.25 2.25 0 0 1-1.884 0L0 6.68v6.57C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25V6.68Z"/></svg>
+        )}
+      </button>
+    );
+  }
+
+  async function handleSendAsEmail(note: Note) {
+    if (!token || !ticket) return;
+    setSendingEmailNoteId(note.id);
+    setSendEmailError(null);
+    try {
+      const res = await fetch(`/api/tickets/${ticket.id}/send-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ subject: `Re: ${ticket.name}`, body: note.body ?? "" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+    } catch (err) {
+      setSendEmailError(err instanceof Error ? err.message : "Failed to send email");
+    } finally {
+      setSendingEmailNoteId(null);
+    }
   }
 
   async function handleTograSent(workflowId: string, projectId: string, project: string, job: string, noteCopyWarning?: string) {
@@ -481,8 +521,14 @@ export default function TicketDetailPage() {
             <div className="border-b border-slate-200 px-4 py-3 shrink-0">
               <h2 className="text-sm font-semibold text-slate-700">{t("notesTitle")}</h2>
             </div>
+            {sendEmailError && (
+              <div className="mx-4 mt-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700 flex items-center justify-between shrink-0">
+                {sendEmailError}
+                <button onClick={() => setSendEmailError(null)} className="font-bold ml-3">×</button>
+              </div>
+            )}
             <div className="flex-1 overflow-hidden min-h-0 px-4 py-3">
-              <NotesPanel entityType="workflow" entityId={ticket.id} isTeam folderOrientation="vertical" />
+              <NotesPanel entityType="workflow" entityId={ticket.id} isTeam folderOrientation="vertical" renderNoteActions={renderSendEmailAction} />
             </div>
           </div>
         </div>
@@ -603,7 +649,7 @@ export default function TicketDetailPage() {
             <div className="flex-1 overflow-hidden p-4 flex flex-col min-h-0">
               {explorerTab === "notes" && (
                 <div className="flex-1 min-h-0">
-                  <NotesPanel entityType="workflow" entityId={ticket.id} isTeam twoColumn />
+                  <NotesPanel entityType="workflow" entityId={ticket.id} isTeam twoColumn renderNoteActions={renderSendEmailAction} />
                 </div>
               )}
               {explorerTab === "ai" && (

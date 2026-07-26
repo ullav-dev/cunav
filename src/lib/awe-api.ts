@@ -137,6 +137,49 @@ export const updateWorkflow = (
 export const deleteWorkflow = (token: string, id: string): Promise<void> =>
   apiRequest(`/workflows/${id}`, token, { method: "DELETE" });
 
+// ── Work items (outbound email) ────────────────────────────────────────────────
+
+export interface WorkItemSummary {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+interface TaskSummary {
+  id: string;
+  status: string;
+}
+
+/** Work items visible to the caller (shared, own team, or own) — used to populate
+ *  the "Send Email" work item picker in queue settings. */
+export const listWorkItems = (token: string): Promise<WorkItemSummary[]> =>
+  apiRequest("/work-items", token);
+
+/** Instantiates a work item (e.g. the queue's configured "Send Email" template)
+ *  into `workflowId`, returning the new task. */
+export const instantiateWorkItem = (
+  token: string,
+  workItemId: string,
+  workflowId: string
+): Promise<{ primary_task: TaskSummary }> =>
+  apiRequest(`/work-items/${workItemId}/instantiate`, token, {
+    method: "POST",
+    body: JSON.stringify({ workflow_id: workflowId }),
+  });
+
+/** Sets a task's input port values. For an automated task with no predecessors,
+ *  setting all required inputs auto-transitions it to Ready and it dispatches
+ *  to the runner on its own — no separate "start" call needed. */
+export const setTaskInputs = (
+  token: string,
+  taskId: string,
+  values: Record<string, string>
+): Promise<TaskSummary> =>
+  apiRequest(`/tasks/${taskId}/inputs`, token, {
+    method: "PATCH",
+    body: JSON.stringify({ values }),
+  });
+
 // ── Teams (UUM) ───────────────────────────────────────────────────────────────
 
 export const getMyTeams = (token: string): Promise<TeamSummary[]> =>

@@ -163,6 +163,7 @@ export interface UpdateQueuePayload {
   ai_togra_template_id?: string | null;
   ai_route_confidence_threshold?: number;
   ai_rules?: AiOutcomeRuleConfig[];
+  email_work_item_id?: string | null;
 }
 
 export const updateQueue = (

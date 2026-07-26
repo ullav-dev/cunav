@@ -82,6 +82,8 @@ export interface Job {
    *  config stays in the ai_togra_* columns above — this only carries
    *  enabled/threshold (plus any non-relational per-type settings). */
   ai_rules: AiOutcomeRuleConfig[];
+  /** Work item instantiated when an agent sends a ticket note as email from this queue. */
+  email_work_item_id: string | null;
 }
 
 export interface AiOutcomeRuleConfig {
