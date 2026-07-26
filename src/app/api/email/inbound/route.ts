@@ -41,8 +41,8 @@ function newTicketRateLimited(): boolean {
   return false;
 }
 
-async function aweFetch(path: string, authHeader: string) {
-  return fetch(`${API_URL}${path}`, { headers: { Authorization: authHeader } });
+async function aweFetch(path: string, token: string) {
+  return fetch(`${API_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } });
 }
 
 /** Extracts a ticket-number candidate from a `ticket-{number}@...` reply-to
