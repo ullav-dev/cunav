@@ -55,22 +55,29 @@ function ticketNumberFromReplyTo(addresses: string[]): string | null {
   return null;
 }
 
-/** Extracts a ticket-number candidate from a `[#42]` tag cunav's own outbound
- *  route stamps onto the subject (see send-email/route.ts), or a bare
- *  "CUNAV-42"/"#42" mention a reporter's mail client preserved on reply. */
+/** Extracts a ticket-number candidate from the `[#42]` tag cunav's own
+ *  outbound route stamps onto the subject (see send-email/route.ts). Only
+ *  this exact tag, not a bare "#42" — a bare number is too easy for one
+ *  customer to reference in prose and land on another customer's ticket;
+ *  the sender check below is the real guard, but there's no reason to widen
+ *  the surface it has to catch. */
 function ticketNumberFromSubject(subject: string): string | null {
   const tagged = /\[#(\d+)\]/.exec(subject);
-  if (tagged) return tagged[1];
-  const hashed = /#(\d+)\b/.exec(subject);
-  if (hashed) return hashed[1];
-  return null;
+  return tagged ? tagged[1] : null;
 }
 
-async function resolveTicketId(token: string, candidate: string): Promise<string | null> {
+async function resolveTicket(
+  token: string,
+  candidate: string
+): Promise<{ id: string; external_reporter_email: string | null } | null> {
   const res = await aweFetch(`/references/resolve?ref=${encodeURIComponent(candidate)}`, token);
   if (!res.ok) return null;
   const resolved = await res.json();
-  return resolved.kind === "cunav_ticket" ? resolved.id : null;
+  if (resolved.kind !== "cunav_ticket") return null;
+  const ticketRes = await aweFetch(`/workflows/${resolved.id}`, token);
+  if (!ticketRes.ok) return null;
+  const ticket = await ticketRes.json();
+  return { id: resolved.id, external_reporter_email: ticket.external_reporter_email ?? null };
 }
 
 export async function POST(req: NextRequest) {
@@ -99,7 +106,17 @@ export async function POST(req: NextRequest) {
   // fallback for reply chains that only preserve the subject.
   const candidate =
     (REPLY_TO_DOMAIN ? ticketNumberFromReplyTo(to_emails) : null) ?? ticketNumberFromSubject(subject);
-  const ticketId = candidate ? await resolveTicketId(token, candidate) : null;
+  const resolved = candidate ? await resolveTicket(token, candidate) : null;
+
+  // Require the sender to actually be this ticket's own reporter before
+  // attaching their message to it — a forwarded or misquoted subject tag
+  // must not let one customer's reply land on another customer's ticket.
+  // A mismatch (or a ticket with no reporter email on file) falls through
+  // to filing a new ticket instead of silently dropping the message.
+  const ticketId =
+    resolved && resolved.external_reporter_email?.toLowerCase() === from_email.toLowerCase()
+      ? resolved.id
+      : null;
 
   const noteBody = `${body.trim()}\n\n---\n*From: ${from_name ? `${from_name} ` : ""}<${from_email}>*\n*Message-ID: ${message_id}*`;
 
@@ -131,11 +148,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "New-ticket rate limit exceeded, dropping message" }, { status: 429 });
   }
 
+  // create_workflow does not derive team_id from job_id — it must be passed
+  // explicitly (same as CreateTicketModal does), or the ticket lands with
+  // team_id: null and its connection-scoped work items (e.g. "Send Email")
+  // 403 later since they can never match a null team.
+  const queueRes = await aweFetch(`/jobs/${INBOUND_EMAIL_QUEUE_ID}`, token);
+  if (!queueRes.ok) {
+    return NextResponse.json({ error: "CUNAV_INBOUND_EMAIL_QUEUE_ID does not resolve to a queue" }, { status: 500 });
+  }
+  const queue = await queueRes.json();
+
   const [first, ...rest] = (from_name || from_email).split(" ");
   const ticket = await createTicket(token, {
     name: subject.trim() || `Email from ${from_email}`,
     description: noteBody,
     job_id: INBOUND_EMAIL_QUEUE_ID,
+    team_id: queue.team_id ?? undefined,
     ticket_type: "question",
     priority: "medium",
     is_shared: true,
