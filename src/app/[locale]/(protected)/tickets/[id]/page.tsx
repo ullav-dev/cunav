@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { resolveUsers, type ResolvedUser } from "@/lib/auth-api";
 import { getTicket, updateTicket, deleteTicket } from "@/lib/cunav-api";
 import { ticketId } from "@/lib/ticket-id";
 import { markRead, hasUnreadAiAnalysis, markAiAnalysisRead } from "@/lib/last-read";
@@ -49,6 +50,7 @@ export default function TicketDetailPage() {
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [queues, setQueues] = useState<Queue[]>([]);
+  const [resolvedReporter, setResolvedReporter] = useState<ResolvedUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -56,6 +58,10 @@ export default function TicketDetailPage() {
   const [titleDraft, setTitleDraft] = useState("");
   const [editingDesc, setEditingDesc] = useState(false);
   const [descDraft, setDescDraft] = useState("");
+  const [editingReporter, setEditingReporter] = useState(false);
+  const [reporterFirstDraft, setReporterFirstDraft] = useState("");
+  const [reporterLastDraft, setReporterLastDraft] = useState("");
+  const [reporterEmailDraft, setReporterEmailDraft] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [mainTab, setMainTab] = useState<MainTab>("details");
   const [explorerTab, setExplorerTab] = useState<ExplorerTab>("notes");
@@ -86,9 +92,38 @@ export default function TicketDetailPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Resolve reporter_id (may be a real user or a service account, e.g. the
+  // MCP server) to a display name — but only when there's no external
+  // reporter recorded, since that already carries a human-readable name.
+  useEffect(() => {
+    const hasExternalReporter =
+      ticket?.external_reporter_first_name || ticket?.external_reporter_last_name || ticket?.external_reporter_email;
+    if (!token || !ticket?.reporter_id || hasExternalReporter) {
+      setResolvedReporter(null);
+      return;
+    }
+    let cancelled = false;
+    resolveUsers(token, [ticket.reporter_id])
+      .then((users) => { if (!cancelled) setResolvedReporter(users[0] ?? null); })
+      .catch(() => { if (!cancelled) setResolvedReporter(null); });
+    return () => { cancelled = true; };
+  }, [token, ticket?.reporter_id, ticket?.external_reporter_first_name, ticket?.external_reporter_last_name, ticket?.external_reporter_email]);
+
   useEffect(() => {
     if (editingTitle && titleRef.current) titleRef.current.focus();
   }, [editingTitle]);
+
+  function reporterDisplay(tk: Ticket): string {
+    const externalName = [tk.external_reporter_first_name, tk.external_reporter_last_name].filter(Boolean).join(" ");
+    if (externalName) return tk.external_reporter_email ? `${externalName} (${tk.external_reporter_email})` : externalName;
+    if (tk.external_reporter_email) return tk.external_reporter_email;
+    if (resolvedReporter) {
+      const name = [resolvedReporter.first_name, resolvedReporter.last_name].filter(Boolean).join(" ").trim();
+      return name || resolvedReporter.username;
+    }
+    if (tk.reporter_id) return tk.reporter_id.slice(0, 8) + "…";
+    return user?.username ?? "—";
+  }
 
   async function patch(update: Parameters<typeof updateTicket>[2]) {
     if (!token || !ticket) return;
@@ -110,6 +145,24 @@ export default function TicketDetailPage() {
   async function handleDescSave() {
     setEditingDesc(false);
     await patch({ description: descDraft || undefined });
+  }
+
+  function startEditingReporter() {
+    setReporterFirstDraft(ticket?.external_reporter_first_name ?? "");
+    setReporterLastDraft(ticket?.external_reporter_last_name ?? "");
+    setReporterEmailDraft(ticket?.external_reporter_email ?? "");
+    setEditingReporter(true);
+  }
+
+  async function handleReporterSave() {
+    setEditingReporter(false);
+    // "" clears a previously-set field — the backend applies these via
+    // COALESCE, so an omitted/undefined field would leave the old value.
+    await patch({
+      external_reporter_first_name: reporterFirstDraft.trim() || "",
+      external_reporter_last_name: reporterLastDraft.trim() || "",
+      external_reporter_email: reporterEmailDraft.trim() || "",
+    });
   }
 
   async function handleDelete() {
@@ -307,7 +360,13 @@ export default function TicketDetailPage() {
                 </div>
                 <div>
                   <dt className="text-xs text-slate-400 font-medium mb-0.5">{t("reporter")}</dt>
-                  <dd className="text-slate-700">{ticket.reporter_id ? ticket.reporter_id.slice(0, 8) + "…" : user?.username ?? "—"}</dd>
+                  <dd className="text-slate-700 flex items-center gap-1.5 group">
+                    <span>{reporterDisplay(ticket)}</span>
+                    <button type="button" onClick={startEditingReporter} title="Edit reporter"
+                      className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-violet-600 transition-opacity">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Z"/></svg>
+                    </button>
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-xs text-slate-400 font-medium mb-0.5">{t("created")}</dt>
@@ -339,6 +398,25 @@ export default function TicketDetailPage() {
                     </select>
                   </dd>
                 </div>
+                {editingReporter && (
+                  <div className="col-span-2 pt-2 border-t border-slate-200 space-y-2">
+                    <dt className="text-xs text-slate-400 font-medium mb-1">External reporter</dt>
+                    <dd className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <input value={reporterFirstDraft} onChange={(e) => setReporterFirstDraft(e.target.value)} placeholder="First name"
+                          className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400" />
+                        <input value={reporterLastDraft} onChange={(e) => setReporterLastDraft(e.target.value)} placeholder="Last name"
+                          className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400" />
+                      </div>
+                      <input type="email" value={reporterEmailDraft} onChange={(e) => setReporterEmailDraft(e.target.value)} placeholder="Email address"
+                        className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400" />
+                      <div className="flex gap-2 justify-end">
+                        <button type="button" onClick={() => setEditingReporter(false)} className="text-sm text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors">Cancel</button>
+                        <button type="button" onClick={handleReporterSave} className="text-sm font-medium bg-violet-600 hover:bg-violet-700 text-white px-4 py-1.5 rounded-lg transition-colors">Save</button>
+                      </div>
+                    </dd>
+                  </div>
+                )}
                 {ticket.togra_workflow_id && (
                   <div className="col-span-2 pt-2 border-t border-slate-200">
                     <dt className="text-xs text-slate-400 font-medium mb-1">Togra Story</dt>

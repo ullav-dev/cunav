@@ -35,8 +35,12 @@ This repo lives under the `cunav` directory within the broader Ullav monorepo wo
 ```sql
 ALTER TABLE workflows ADD COLUMN ticket_type TEXT;
 ALTER TABLE workflows ADD COLUMN priority TEXT;
-ALTER TABLE workflows ADD COLUMN reporter_id UUID REFERENCES users(id);
+ALTER TABLE workflows ADD COLUMN reporter_id UUID; -- no FK: users live in the UUM database, not awe-server's
 ALTER TABLE workflows ADD COLUMN resolved_at TIMESTAMPTZ;
+-- Reporter with no UUM user row (e.g. a customer emailing in), independent of reporter_id.
+ALTER TABLE workflows ADD COLUMN external_reporter_first_name TEXT;
+ALTER TABLE workflows ADD COLUMN external_reporter_last_name TEXT;
+ALTER TABLE workflows ADD COLUMN external_reporter_email TEXT;
 ```
 
 Apply this migration to awe-server before running cunav against a real backend.

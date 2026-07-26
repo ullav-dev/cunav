@@ -156,6 +156,12 @@ export interface Ticket extends Workflow {
   priority: Priority | null;
   reporter_id: string | null;
   resolved_at: string | null;
+  // Set when the reporter is someone with no UUM user row (e.g. a customer
+  // emailing in), as distinct from reporter_id. Independent of it — a ticket
+  // may have either, both, or neither.
+  external_reporter_first_name: string | null;
+  external_reporter_last_name: string | null;
+  external_reporter_email: string | null;
 }
 
 export interface Queue extends Job {

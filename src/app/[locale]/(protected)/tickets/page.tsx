@@ -71,6 +71,10 @@ function CreateTicketModal({ queues, defaultQueueId, teamIds, onClose, onCreated
   const [priority, setPriority] = useState<Priority>("medium");
   const [queueId, setQueueId] = useState(defaultQueueId ?? queues[0]?.id ?? "");
   const [teamId] = useState(teamIds[0] ?? "");
+  const [showExternalReporter, setShowExternalReporter] = useState(false);
+  const [reporterFirstName, setReporterFirstName] = useState("");
+  const [reporterLastName, setReporterLastName] = useState("");
+  const [reporterEmail, setReporterEmail] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,6 +91,9 @@ function CreateTicketModal({ queues, defaultQueueId, teamIds, onClose, onCreated
         job_id: queueId || undefined,
         team_id: teamId || undefined,
         is_shared: true,
+        external_reporter_first_name: reporterFirstName.trim() || undefined,
+        external_reporter_last_name: reporterLastName.trim() || undefined,
+        external_reporter_email: reporterEmail.trim() || undefined,
       });
       onCreated(ticket);
       onClose();
@@ -141,6 +148,34 @@ function CreateTicketModal({ queues, defaultQueueId, teamIds, onClose, onCreated
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
             <MarkdownEditor value={description} onChange={setDescription} placeholder="Describe the issue in detail…" height={160} />
+          </div>
+          <div>
+            {showExternalReporter ? (
+              <div className="space-y-2 border border-slate-200 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-slate-700">Reporting on behalf of someone else</span>
+                  <button
+                    type="button"
+                    onClick={() => { setShowExternalReporter(false); setReporterFirstName(""); setReporterLastName(""); setReporterEmail(""); }}
+                    className="text-xs text-slate-400 hover:text-slate-600"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <input value={reporterFirstName} onChange={(e) => setReporterFirstName(e.target.value)} placeholder="First name"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400" />
+                  <input value={reporterLastName} onChange={(e) => setReporterLastName(e.target.value)} placeholder="Last name"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400" />
+                </div>
+                <input type="email" value={reporterEmail} onChange={(e) => setReporterEmail(e.target.value)} placeholder="Email address"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400" />
+              </div>
+            ) : (
+              <button type="button" onClick={() => setShowExternalReporter(true)} className="text-sm text-violet-600 hover:underline">
+                + Reporting on behalf of someone else?
+              </button>
+            )}
           </div>
           {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
           <div className="flex gap-3 justify-end pt-2 border-t border-slate-100">
