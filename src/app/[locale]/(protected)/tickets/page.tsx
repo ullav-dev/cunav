@@ -70,7 +70,14 @@ function CreateTicketModal({ queues, defaultQueueId, teamIds, onClose, onCreated
   const [ticketType, setTicketType] = useState<TicketType>("bug");
   const [priority, setPriority] = useState<Priority>("medium");
   const [queueId, setQueueId] = useState(defaultQueueId ?? queues[0]?.id ?? "");
-  const [teamId] = useState(teamIds[0] ?? "");
+  // A ticket's team_id must match its queue's team — awe-server's connection
+  // resolution (e.g. outbound email) requires an exact match, and a ticket
+  // created under the wrong team silently breaks that later. Derive it from
+  // the selected queue rather than the agent's own (possibly different)
+  // first team membership, falling back to that only when the queue has no
+  // team of its own (e.g. "No queue").
+  const selectedQueue = queues.find((q) => q.id === queueId);
+  const teamId = selectedQueue?.team_id ?? teamIds[0] ?? "";
   const [showExternalReporter, setShowExternalReporter] = useState(false);
   const [reporterFirstName, setReporterFirstName] = useState("");
   const [reporterLastName, setReporterLastName] = useState("");

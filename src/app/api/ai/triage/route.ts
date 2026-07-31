@@ -53,8 +53,11 @@ const FEEDBACK_HISTORY_LIMIT = 10;
  *  via a new server-side query param — queue-sized ticket lists are small enough that
  *  this isn't worth the extra API surface (v1: one structured call, no retrieval infra).
  *  Still reads the ticket-wide ai_outcome_feedback* columns rather than per-outcome
- *  feedback — generalizing this to per-outcome-type feedback lands alongside the
- *  second registered outcome type, which is also when it starts to matter. */
+ *  feedback, even now that flag_duplicate is a second registered outcome type —
+ *  FeedbackReasonModal's thumbs up/down judges the AI Analysis note's write-up as a
+ *  whole, not any one proposed outcome, so ticket-wide columns are still the right
+ *  shape for what's actually being rated. Per-outcome feedback (ai_ticket_outcomes
+ *  already has the columns) is worth doing once the UI asks a per-outcome question. */
 async function buildFeedbackContext(token: string, jobId: string): Promise<string[]> {
   const tickets = await listTickets(token, { job_id: jobId });
   return tickets

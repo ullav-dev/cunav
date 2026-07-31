@@ -76,10 +76,12 @@ AUTH_URL=http://localhost:8081         # ullav-user-management
 TOGRA_URL=http://localhost:3007        # Togra app (for SSO cross-link)
 OBAIR_URL=http://localhost:3000        # Obair/AWE app
 DAM_BROWSER_URL=http://localhost:3004  # DAM browser
-REPLY_TO_DOMAIN=                       # optional; if set, "Send as email" (below) sets
-                                        # Reply-To: ticket-{number}@REPLY_TO_DOMAIN, the
-                                        # primary way the inbound-email poll (below)
-                                        # resolves a reply back onto its ticket
+REPLY_TO_DOMAIN=                       # optional; only meaningful if some other process sets
+                                        # Reply-To: ticket-{number}@REPLY_TO_DOMAIN on outbound mail —
+                                        # "Send as email" (below) can't set it (its email script_type
+                                        # has no Reply-To support), so today this only matters if you
+                                        # wire that up yourself. The inbound-email poll's primary
+                                        # resolution path is the `[#{number}]` subject tag instead.
 CUNAV_EMAIL_WEBHOOK_SECRET=            # must match awe-runner's env var of the same name;
                                         # authenticates the inbound-email poll's webhook call
 CUNAV_INBOUND_EMAIL_QUEUE_ID=          # queue a new ticket lands in when an inbound email
@@ -140,12 +142,15 @@ dispatched to an AI triage step. Flow:
    registered executor (`src/lib/ai-outcomes/` — one module per outcome type, registered in
    `registry.ts`) if the queue's `ai_rules` config (JSONB array, one `{type, enabled,
    confidence_threshold}` entry per outcome type; edited via `AiQueueSettingsModal`) has
-   that rule enabled and the model's confidence clears its threshold. Today the only
-   registered outcome type is `route_to_togra`, which creates/links a Togra story the same
-   way `SendToTograModal` does it by hand — its destination (project/job/template) stays in
-   the dedicated `ai_togra_*` columns rather than `ai_rules`, since those are FK-backed.
-   Adding a new outcome type is one new file under `src/lib/ai-outcomes/` plus one line in
-   `registry.ts` — no changes to the webhook, schema, or settings UI required.
+   that rule enabled and the model's confidence clears its threshold. Two outcome types are
+   registered: `route_to_togra`, which creates/links a Togra story the same way
+   `SendToTograModal` does it by hand — its destination (project/job/template) stays in the
+   dedicated `ai_togra_*` columns rather than `ai_rules`, since those are FK-backed — and
+   `flag_duplicate`, which posts a note naming the most lexically similar other ticket in the
+   same queue for a human to review (it never mutates the ticket itself; only `route_to_togra`
+   is allowed to change ticket status/assignment). Adding another outcome type is one new file
+   under `src/lib/ai-outcomes/` plus one line each in `registry.ts` and `registry-meta.ts` — no
+   changes to the webhook, schema, or settings UI required.
 4. Every proposed outcome (executed or not) is persisted as its own row in awe-server's
    `ai_ticket_outcomes` table — confidence on an outcome that *wasn't* acted on is still
    useful eval signal. `workflows.ai_confidence`/`ai_should_route` are still dual-written
@@ -160,25 +165,41 @@ widen the AI's tool access once auto-routing is trusted.
 
 ## Outbound Email ("Send as email")
 
-Built on AWE's generic work-item/connection primitives, not a cunav-specific email
-service. A note can be sent to a ticket's `external_reporter_email` as raw SMTP mail:
+Built on AWE's generic `email` script_type + connection primitives (see awe-server
+migration `063_email_script_type.sql`), not a cunav-specific email service or a
+scripted work item — the runner sends directly via SMTP (lettre), no Python
+subprocess involved. A note can be sent to a ticket's `external_reporter_email` as
+raw SMTP mail:
 
-1. An awe-server `smtp` connection (host/port/username config, password secret) backs a
-   "Send Email" work item (`script_type: python`) — see
-   `awe-server/docs/work-items/send_email.py` for the checked-in script source (the work
-   item itself is built/edited through Obair's work-items UI, not a migration).
-2. A queue nominates its work item via `jobs.email_work_item_id` (queue admin UI,
-   `AiQueueSettingsModal`'s "Outbound email work item" section) — same per-queue routing
-   pattern as the AI-triage Togra destination above.
-3. cunav's `src/app/api/tickets/[id]/send-email/route.ts` looks up the ticket's queue and
-   its configured work item, `POST /work-items/{id}/instantiate`s it into the ticket's
-   workflow, then `PATCH /tasks/{id}/inputs`es `to`/`subject`/`body`/`reply_to` — setting
-   all required inputs auto-transitions the task to `Ready` and it dispatches on its own,
-   no separate "start" call needed. The button lives in `NotesPanel` via its
-   `renderNoteActions` prop, shown only when the ticket has an `external_reporter_email`.
-4. Only `external_reporter_email` is available today — UUM's `/users/resolve` deliberately
+1. An awe-server `smtp` connection (host/port/username config, password secret) is
+   created once in Obair (Connections) and picked directly by the queue admin — no
+   work item to build/edit for this anymore.
+2. A queue nominates its connection via `jobs.email_connection_id` (queue admin UI,
+   `AiQueueSettingsModal`'s "Outbound email connection" section, listing `smtp`
+   connections scoped to the queue's own team) — same per-queue routing pattern as
+   the AI-triage Togra destination above. The connection must belong to the same
+   team as the queue/ticket — connections are team-scoped, and a cross-team
+   connection_id fails at send time with "could not be resolved ... team mismatch"
+   (see `GET /tasks/{id}/connection` on awe-server).
+3. cunav's `src/app/api/tickets/[id]/send-email/route.ts` looks up the ticket's queue
+   and its configured connection, then creates the automated task itself each send:
+   `POST /tasks` (`task_type: "automated"`), `PUT /tasks/{id}/script`
+   (`script_type: "email"`, the queue's `connection_id`), `POST /tasks/{id}/ports`
+   to register `to`/`subject`/`body_text` as required inputs, then
+   `PATCH /tasks/{id}/inputs`es those three values — setting all required inputs
+   auto-transitions the task to `Ready` and it dispatches on its own, no separate
+   "start" call needed. The button lives in `NotesPanel` via its
+   `renderNoteActions` prop, shown only when the ticket has an
+   `external_reporter_email`.
+4. The email script_type has no Reply-To support (unlike the old Python script), so
+   REPLY_TO_DOMAIN is currently unused by this flow — see Inbound Email below.
+5. Only `external_reporter_email` is available today — UUM's `/users/resolve` deliberately
    excludes email, so emailing an internal reporter's own address is out of scope until
    that's revisited.
+6. `src/app/api/tickets/[id]/send-email/status/route.ts` lets the frontend poll the
+   created task's real outcome (`GET /tasks/{id}` + `/tasks/{id}/runs` for the error
+   detail on failure) instead of treating "queued successfully" as "delivered" — the
+   task dispatch is async, out of process on awe-runner.
 
 ## Inbound Email
 
@@ -205,8 +226,9 @@ need this because it's triggered by a human action, not a clock.
    (mailbox rebuild), which resets UID numbering but not Message-IDs.
 4. cunav's webhook resolves the ticket two ways, in order: the reply-to address
    (`ticket-{number}@REPLY_TO_DOMAIN`, only usable when that env var is configured — see
-   Outbound Email above) then a `[#{number}]` tag the outbound route stamps onto every
-   subject specifically so this fallback works even without `REPLY_TO_DOMAIN`. Both paths
+   Outbound Email above, though outbound currently never sets Reply-To, so this path is
+   dormant until that regains support) then a `[#{number}]` tag the outbound route stamps
+   onto every subject — currently the only live resolution path in practice. Both paths
    resolve through the existing `GET /references/resolve` endpoint (`cunav::parse_ref`),
    not a reimplemented regex.
 5. Resolved → posts a note (fixed title `INBOUND_EMAIL_NOTE_TITLE`, dedup on a

@@ -10,7 +10,7 @@ import { getTicket, updateTicket, deleteTicket } from "@/lib/cunav-api";
 import { ticketId } from "@/lib/ticket-id";
 import { markRead, hasUnreadAiAnalysis, markAiAnalysisRead } from "@/lib/last-read";
 import { listQueues } from "@/lib/cunav-api";
-import { createNote } from "@/lib/notes-api";
+import { createNote, createNoteReply } from "@/lib/notes-api";
 import { useRouter } from "@/i18n/navigation";
 import type { Ticket, Queue, Status, TicketType, Priority, Note } from "@/lib/types";
 import StatusPill from "@/components/StatusPill";
@@ -39,6 +39,17 @@ function formatDate(iso: string): string {
 type MainTab = "details" | "triage";
 type ExplorerTab = "notes" | "ai" | "wikipedia";
 
+// Per-note "Send as email" status, keyed by note id. This is transient
+// (session-only) feedback for the button itself — the durable record is the
+// reply logged onto the note (see logEmailOutcome below).
+type EmailSendState =
+  | { phase: "sending" | "polling" }
+  | { phase: "sent"; at: string | null }
+  | { phase: "failed"; error: string }
+  | { phase: "timeout" };
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export default function TicketDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { token, user } = useAuth();
@@ -50,8 +61,7 @@ export default function TicketDetailPage() {
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [queues, setQueues] = useState<Queue[]>([]);
-  const [sendingEmailNoteId, setSendingEmailNoteId] = useState<string | null>(null);
-  const [sendEmailError, setSendEmailError] = useState<string | null>(null);
+  const [emailSendState, setEmailSendState] = useState<Record<string, EmailSendState>>({});
   const [resolvedReporter, setResolvedReporter] = useState<ResolvedUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -180,27 +190,55 @@ export default function TicketDetailPage() {
 
   function renderSendEmailAction(note: Note) {
     if (!ticket?.external_reporter_email || !note.body) return null;
-    const sending = sendingEmailNoteId === note.id;
+    const state = emailSendState[note.id];
+    const busy = state?.phase === "sending" || state?.phase === "polling";
     return (
-      <button
-        onClick={() => handleSendAsEmail(note)}
-        disabled={sending}
-        className="p-1.5 text-slate-400 hover:text-violet-700 disabled:opacity-40 transition-colors rounded"
-        title={`Send as email to ${ticket.external_reporter_email}`}
-      >
-        {sending ? (
-          <div className="w-3.5 h-3.5 border-2 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
-        ) : (
-          <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-current"><path d="M1.75 3A1.75 1.75 0 0 0 0 4.75v.28l7.686 4.611a.75.75 0 0 0 .628 0L16 5.03v-.28C16 3.784 15.216 3 14.25 3H1.75ZM16 6.68 9.03 10.83a2.25 2.25 0 0 1-1.884 0L0 6.68v6.57C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25V6.68Z"/></svg>
+      <div className="flex items-center gap-1.5">
+        {state?.phase === "sent" && (
+          <span
+            className="text-[10px] font-medium text-emerald-600"
+            title={state.at ? `Sent ${new Date(state.at).toLocaleString()}` : "Sent"}
+          >
+            Sent {state.at ? new Date(state.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
+          </span>
         )}
-      </button>
+        {state?.phase === "failed" && (
+          <span className="text-[10px] font-medium text-red-600" title={state.error}>Failed to send</span>
+        )}
+        {state?.phase === "timeout" && (
+          <span className="text-[10px] font-medium text-amber-600" title="No delivery confirmation received from the mail task after 30s">
+            No confirmation
+          </span>
+        )}
+        <button
+          onClick={() => handleSendAsEmail(note)}
+          disabled={busy}
+          className="p-1.5 text-slate-400 hover:text-violet-700 disabled:opacity-40 transition-colors rounded"
+          title={`Send as email to ${ticket.external_reporter_email}`}
+        >
+          {busy ? (
+            <div className="w-3.5 h-3.5 border-2 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
+          ) : (
+            <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-current"><path d="M1.75 3A1.75 1.75 0 0 0 0 4.75v.28l7.686 4.611a.75.75 0 0 0 .628 0L16 5.03v-.28C16 3.784 15.216 3 14.25 3H1.75ZM16 6.68 9.03 10.83a2.25 2.25 0 0 1-1.884 0L0 6.68v6.57C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25V6.68Z"/></svg>
+          )}
+        </button>
+      </div>
     );
+  }
+
+  // Best-effort audit trail on the note itself. Replies require the parent
+  // note to be shared (awe-server rejects replies on private notes) — if
+  // that fails, the inline status next to the button (above) is still the
+  // source of truth for this session.
+  async function logEmailOutcome(note: Note, body: string) {
+    if (!token) return;
+    try { await createNoteReply(token, note.id, body); } catch { /* note not shared, or reply failed */ }
   }
 
   async function handleSendAsEmail(note: Note) {
     if (!token || !ticket) return;
-    setSendingEmailNoteId(note.id);
-    setSendEmailError(null);
+    const reporterEmail = ticket.external_reporter_email;
+    setEmailSendState((prev) => ({ ...prev, [note.id]: { phase: "sending" } }));
     try {
       const res = await fetch(`/api/tickets/${ticket.id}/send-email`, {
         method: "POST",
@@ -209,10 +247,37 @@ export default function TicketDetailPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+
+      setEmailSendState((prev) => ({ ...prev, [note.id]: { phase: "polling" } }));
+      // Instantiating the work item only enqueues it for awe-runner to pick
+      // up — it isn't sent synchronously, so poll the task's actual outcome
+      // instead of assuming "queued" means "delivered".
+      const taskId: string = data.task_id;
+      const deadline = Date.now() + 30_000;
+      while (Date.now() < deadline) {
+        await sleep(2_000);
+        const statusRes = await fetch(`/api/tickets/${ticket.id}/send-email/status?taskId=${taskId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!statusRes.ok) continue;
+        const status = await statusRes.json();
+        if (status.status === "sent") {
+          setEmailSendState((prev) => ({ ...prev, [note.id]: { phase: "sent", at: status.at } }));
+          await logEmailOutcome(note, `📧 Email sent to ${reporterEmail} at ${status.at ? new Date(status.at).toLocaleString() : new Date().toLocaleString()}.`);
+          return;
+        }
+        if (status.status === "failed") {
+          setEmailSendState((prev) => ({ ...prev, [note.id]: { phase: "failed", error: status.error ?? "Send failed" } }));
+          await logEmailOutcome(note, `⚠️ Email to ${reporterEmail} failed to send: ${status.error ?? "Send failed"}`);
+          return;
+        }
+      }
+      setEmailSendState((prev) => ({ ...prev, [note.id]: { phase: "timeout" } }));
+      await logEmailOutcome(note, `⚠️ Email to ${reporterEmail} has no delivery confirmation after 30s — check the Send Email task in Obair.`);
     } catch (err) {
-      setSendEmailError(err instanceof Error ? err.message : "Failed to send email");
-    } finally {
-      setSendingEmailNoteId(null);
+      const message = err instanceof Error ? err.message : "Failed to send email";
+      setEmailSendState((prev) => ({ ...prev, [note.id]: { phase: "failed", error: message } }));
+      await logEmailOutcome(note, `⚠️ Email to ${reporterEmail} failed to send: ${message}`);
     }
   }
 
@@ -521,12 +586,6 @@ export default function TicketDetailPage() {
             <div className="border-b border-slate-200 px-4 py-3 shrink-0">
               <h2 className="text-sm font-semibold text-slate-700">{t("notesTitle")}</h2>
             </div>
-            {sendEmailError && (
-              <div className="mx-4 mt-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700 flex items-center justify-between shrink-0">
-                {sendEmailError}
-                <button onClick={() => setSendEmailError(null)} className="font-bold ml-3">×</button>
-              </div>
-            )}
             <div className="flex-1 overflow-hidden min-h-0 px-4 py-3">
               <NotesPanel entityType="workflow" entityId={ticket.id} isTeam folderOrientation="vertical" renderNoteActions={renderSendEmailAction} />
             </div>

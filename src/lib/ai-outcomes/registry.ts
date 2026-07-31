@@ -1,4 +1,5 @@
 import { routeToTogra } from "./route-to-togra";
+import { flagDuplicate } from "./flag-duplicate";
 import { AI_OUTCOME_META } from "./registry-meta";
 import type { AiOutcomeDefinition } from "./types";
 
@@ -6,7 +7,7 @@ import type { AiOutcomeDefinition } from "./types";
  *  new file implementing AiOutcomeDefinition and adding it here, plus a
  *  matching entry in registry-meta.ts — nothing else in the triage route,
  *  queue settings UI, or feedback UI needs to change. */
-export const AI_OUTCOME_REGISTRY: AiOutcomeDefinition[] = [routeToTogra];
+export const AI_OUTCOME_REGISTRY: AiOutcomeDefinition[] = [routeToTogra, flagDuplicate];
 
 export function getOutcomeDefinition(type: string): AiOutcomeDefinition | undefined {
   return AI_OUTCOME_REGISTRY.find((o) => o.type === type);

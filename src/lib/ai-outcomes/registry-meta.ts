@@ -11,4 +11,5 @@ import type { AiOutcomeMeta } from "./types";
  *  in development). */
 export const AI_OUTCOME_META: AiOutcomeMeta[] = [
   { type: "route_to_togra", label: "Auto-route to Togra", defaultConfidenceThreshold: 0.7 },
+  { type: "flag_duplicate", label: "Flag possible duplicate", defaultConfidenceThreshold: 0.6 },
 ];

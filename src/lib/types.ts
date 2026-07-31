@@ -82,8 +82,18 @@ export interface Job {
    *  config stays in the ai_togra_* columns above — this only carries
    *  enabled/threshold (plus any non-relational per-type settings). */
   ai_rules: AiOutcomeRuleConfig[];
-  /** Work item instantiated when an agent sends a ticket note as email from this queue. */
-  email_work_item_id: string | null;
+  /** SMTP connection attached to the automated email task cunav creates when an
+   *  agent sends a ticket note as email from this queue. */
+  email_connection_id: string | null;
+}
+
+export interface Connection {
+  id: string;
+  name: string;
+  description: string | null;
+  connection_type: "bearer_token" | "oauth2_client_credentials" | "api_key_header" | "basic_auth" | "smtp" | "imap";
+  team_id: string;
+  has_secret: boolean;
 }
 
 export interface AiOutcomeRuleConfig {
@@ -205,7 +215,12 @@ export interface Note {
 // directly rather than showing the raw UUID.
 export const AI_ANALYSIS_NOTE_TITLE = "AI Analysis";
 export const AI_AUTOROUTE_NOTE_TITLE = "Auto-routed to Togra";
-export const AI_NOTE_TITLES: readonly string[] = [AI_ANALYSIS_NOTE_TITLE, AI_AUTOROUTE_NOTE_TITLE];
+export const AI_DUPLICATE_NOTE_TITLE = "Possible duplicate flagged";
+export const AI_NOTE_TITLES: readonly string[] = [
+  AI_ANALYSIS_NOTE_TITLE,
+  AI_AUTOROUTE_NOTE_TITLE,
+  AI_DUPLICATE_NOTE_TITLE,
+];
 
 /** Fixed title for notes posted by the inbound-email webhook (src/app/api/email/inbound/route.ts)
  *  from a reporter's reply — not an AI-authored note, so deliberately not in AI_NOTE_TITLES. */
