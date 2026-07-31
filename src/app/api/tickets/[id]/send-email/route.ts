@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const API_URL = process.env.API_URL ?? "http://localhost:8085";
-// The domain cunav's ticket-{number}@... Reply-To addresses use, so a later
-// inbound-email poll can route a reply back onto its ticket. Distinct from
-// any product's own mail domain — this is purely the routing address.
-const REPLY_TO_DOMAIN = process.env.REPLY_TO_DOMAIN;
 
 interface TicketRow {
   job_id: string | null;
@@ -13,13 +9,28 @@ interface TicketRow {
 }
 
 interface JobRow {
-  email_work_item_id: string | null;
+  email_connection_id: string | null;
+}
+
+interface TaskRow {
+  id: string;
 }
 
 async function aweFetch(path: string, authHeader: string, init?: RequestInit) {
   return fetch(`${API_URL}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", Authorization: authHeader, ...init?.headers },
+  });
+}
+
+// Registers a required input port spec on the task — these are what gate its
+// auto-unlock from "Not Started" to "Ready" once all three are patched (see
+// apply_input_values in awe-server). Without them the task would unlock (and
+// dispatch) the moment any single input lands, before the message is complete.
+async function requirePort(taskId: string, name: string, authHeader: string) {
+  return aweFetch(`/tasks/${taskId}/ports`, authHeader, {
+    method: "POST",
+    body: JSON.stringify({ direction: "input", name, value_type: "string", required: true }),
   });
 }
 
@@ -55,41 +66,51 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!jobRes.ok) return NextResponse.json({ error: "Queue not found" }, { status: 404 });
   const job: JobRow = await jobRes.json();
 
-  if (!job.email_work_item_id) {
+  if (!job.email_connection_id) {
     return NextResponse.json(
-      { error: "This queue has no outbound-email work item configured (Queue settings → Outbound email work item)" },
+      { error: "This queue has no outbound-email connection configured (Queue settings → Outbound email connection)" },
       { status: 400 }
     );
   }
 
-  const instRes = await aweFetch(`/work-items/${job.email_work_item_id}/instantiate`, authHeader, {
+  const taskRes = await aweFetch("/tasks", authHeader, {
     method: "POST",
-    body: JSON.stringify({ workflow_id: ticketId }),
+    body: JSON.stringify({ name: "Send Email", workflow_id: ticketId, task_type: "automated" }),
   });
-  if (!instRes.ok) {
-    const err = await instRes.json().catch(() => ({}));
-    return NextResponse.json({ error: err.error ?? "Failed to instantiate Send Email work item" }, { status: 502 });
+  if (!taskRes.ok) {
+    const err = await taskRes.json().catch(() => ({}));
+    return NextResponse.json({ error: err.error ?? "Failed to create Send Email task" }, { status: 502 });
   }
-  const { primary_task: task } = await instRes.json();
+  const task: TaskRow = await taskRes.json();
+
+  const scriptRes = await aweFetch(`/tasks/${task.id}/script`, authHeader, {
+    method: "PUT",
+    body: JSON.stringify({ script_type: "email", connection_id: job.email_connection_id }),
+  });
+  if (!scriptRes.ok) {
+    const err = await scriptRes.json().catch(() => ({}));
+    return NextResponse.json({ error: err.error ?? "Failed to attach email script to task" }, { status: 502 });
+  }
+
+  for (const port of ["to", "subject", "body_text"]) {
+    const portRes = await requirePort(task.id, port, authHeader);
+    if (!portRes.ok) {
+      const err = await portRes.json().catch(() => ({}));
+      return NextResponse.json({ error: err.error ?? `Failed to register '${port}' input port` }, { status: 502 });
+    }
+  }
 
   // Tag the subject with the ticket number so a reply can be resolved back to
-  // its ticket even without REPLY_TO_DOMAIN configured (most mail clients
-  // preserve the subject, including this tag, on reply) — see
-  // src/app/api/email/inbound/route.ts's subject-fallback resolution.
+  // its ticket — see src/app/api/email/inbound/route.ts's subject-fallback
+  // resolution. (The email script_type has no Reply-To support, unlike the
+  // old work-item script, so this tag is the only resolution path for now.)
   const taggedSubject = ticket.ticket_number ? `${subject} [#${ticket.ticket_number}]` : subject;
-
-  const values: Record<string, string> = {
-    to: ticket.external_reporter_email,
-    subject: taggedSubject,
-    body,
-  };
-  if (REPLY_TO_DOMAIN && ticket.ticket_number) {
-    values.reply_to = `ticket-${ticket.ticket_number}@${REPLY_TO_DOMAIN}`;
-  }
 
   const inputsRes = await aweFetch(`/tasks/${task.id}/inputs`, authHeader, {
     method: "PATCH",
-    body: JSON.stringify({ values }),
+    body: JSON.stringify({
+      values: { to: ticket.external_reporter_email, subject: taggedSubject, body_text: body },
+    }),
   });
   if (!inputsRes.ok) {
     const err = await inputsRes.json().catch(() => ({}));

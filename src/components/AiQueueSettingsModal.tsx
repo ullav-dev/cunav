@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { updateQueue } from "@/lib/cunav-api";
-import { listWorkItems, type WorkItemSummary } from "@/lib/awe-api";
-import type { AiOutcomeRuleConfig, Queue } from "@/lib/types";
+import { updateQueue, listConnections } from "@/lib/cunav-api";
+import type { AiOutcomeRuleConfig, Queue, Connection } from "@/lib/types";
 import { AI_OUTCOME_META } from "@/lib/ai-outcomes/registry-meta";
 
 // Matches route-to-togra.ts's ROUTE_TO_TOGRA_TYPE. Not imported from that
@@ -44,6 +43,14 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
   const [aiEnabled, setAiEnabled] = useState(queue.ai_enabled);
   const [confidence, setConfidence] = useState(queue.ai_route_confidence_threshold);
 
+  // route_to_togra gets its own enable checkbox, independent of the blanket
+  // "AI Enabled" toggle above — a queue can run only flag_duplicate (or any
+  // other registered outcome type) without being forced to pick a Togra
+  // destination it doesn't want.
+  const [routeToTograEnabled, setRouteToTograEnabled] = useState(
+    () => (queue.ai_rules ?? []).find((r) => r.type === ROUTE_TO_TOGRA_TYPE)?.enabled ?? false
+  );
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
@@ -60,9 +67,9 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
     (queue.ai_rules ?? []).filter((r) => r.type !== ROUTE_TO_TOGRA_TYPE)
   );
 
-  const [workItems, setWorkItems] = useState<WorkItemSummary[]>([]);
-  const [loadingWorkItems, setLoadingWorkItems] = useState(true);
-  const [emailWorkItemId, setEmailWorkItemId] = useState(queue.email_work_item_id ?? "");
+  const [smtpConnections, setSmtpConnections] = useState<Connection[]>([]);
+  const [loadingConnections, setLoadingConnections] = useState(true);
+  const [emailConnectionId, setEmailConnectionId] = useState(queue.email_connection_id ?? "");
 
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingJobs, setLoadingJobs] = useState(false);
@@ -70,12 +77,15 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Scoped to the queue's own team where possible — a connection belonging to a
+  // different team can't actually be resolved by the runner at send time (it's
+  // team-scoped), so narrowing the picker here heads off that mismatch.
   useEffect(() => {
-    listWorkItems(token)
-      .then(setWorkItems)
-      .catch(() => setWorkItems([]))
-      .finally(() => setLoadingWorkItems(false));
-  }, [token]);
+    listConnections(token, queue.team_id ? { team_id: queue.team_id } : undefined)
+      .then((conns) => setSmtpConnections(conns.filter((c) => c.connection_type === "smtp")))
+      .catch(() => setSmtpConnections([]))
+      .finally(() => setLoadingConnections(false));
+  }, [token, queue.team_id]);
 
   useEffect(() => {
     fetch("/api/projects", { headers: { Authorization: `Bearer ${token}` } })
@@ -111,7 +121,10 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
       .finally(() => setLoadingTemplates(false));
   }, [selectedProject, projects, token]);
 
-  const canSave = !aiEnabled || (!!selectedProject && !!selectedJob);
+  // Togra destination is only required when route_to_togra's own checkbox is
+  // on — AI-enabling a queue must not force every other outcome type along
+  // for the ride just because it needs a Togra pick.
+  const canSave = !aiEnabled || !routeToTograEnabled || (!!selectedProject && !!selectedJob);
   const confidencePct = useMemo(() => Math.round(confidence * 100), [confidence]);
 
   async function handleSave() {
@@ -120,7 +133,7 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
       const ai_rules: AiOutcomeRuleConfig[] = [
         {
           type: ROUTE_TO_TOGRA_TYPE,
-          enabled: aiEnabled && !!selectedProject && !!selectedJob,
+          enabled: routeToTograEnabled && !!selectedProject && !!selectedJob,
           confidence_threshold: confidence,
         },
         ...otherRuleConfigs,
@@ -132,7 +145,7 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
         ai_togra_template_id: selectedTemplate || null,
         ai_route_confidence_threshold: confidence,
         ai_rules,
-        email_work_item_id: emailWorkItemId || null,
+        email_connection_id: emailConnectionId || null,
       });
       onSaved(updated);
       onClose();
@@ -177,54 +190,66 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
             <span className="text-sm font-medium text-slate-700">AI Enabled</span>
           </label>
           <p className="text-xs text-slate-500 -mt-2">
-            Tickets landing in this queue are analysed by AI, which posts an analysis note and,
-            above the confidence threshold below, auto-creates a matching Togra story.
+            Tickets landing in this queue are analysed by AI, which always posts an analysis note.
+            Enable any of the outcome types below to let AI act on its own analysis.
           </p>
 
           {aiEnabled && (
             <>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Togra project</label>
-                {loadingProjects ? (
-                  <div className="text-xs text-slate-400">Loading projects…</div>
-                ) : (
-                  <select value={selectedProject} onChange={(e) => { setSelectedProject(e.target.value); setSelectedJob(""); setSelectedTemplate(""); }}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400">
-                    <option value="">Select a project…</option>
-                    {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Board / backlog</label>
-                <select value={selectedJob} onChange={(e) => setSelectedJob(e.target.value)} disabled={!selectedProject || loadingJobs}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-60">
-                  <option value="">{loadingJobs ? "Loading…" : "Select a board…"}</option>
-                  {jobs.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Template (optional)</label>
-                <select value={selectedTemplate} onChange={(e) => setSelectedTemplate(e.target.value)} disabled={!selectedProject || loadingTemplates}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-60">
-                  <option value="">No template</option>
-                  {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Auto-route confidence threshold: <span className="text-violet-700">{confidencePct}%</span>
+              <div className="border-t border-slate-100 pt-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={routeToTograEnabled} onChange={(e) => setRouteToTograEnabled(e.target.checked)}
+                    className="rounded border-slate-300 text-violet-600 focus:ring-violet-400" />
+                  <span className="text-sm font-medium text-slate-700">Auto-route to Togra</span>
                 </label>
-                <input type="range" min={0} max={1} step={0.05} value={confidence}
-                  onChange={(e) => setConfidence(parseFloat(e.target.value))}
-                  className="w-full accent-violet-600" />
-                <p className="text-xs text-slate-400 mt-1">
-                  Below this confidence, the AI only posts its analysis and leaves routing to a human.
-                </p>
               </div>
+
+              {routeToTograEnabled && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Togra project</label>
+                    {loadingProjects ? (
+                      <div className="text-xs text-slate-400">Loading projects…</div>
+                    ) : (
+                      <select value={selectedProject} onChange={(e) => { setSelectedProject(e.target.value); setSelectedJob(""); setSelectedTemplate(""); }}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400">
+                        <option value="">Select a project…</option>
+                        {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Board / backlog</label>
+                    <select value={selectedJob} onChange={(e) => setSelectedJob(e.target.value)} disabled={!selectedProject || loadingJobs}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-60">
+                      <option value="">{loadingJobs ? "Loading…" : "Select a board…"}</option>
+                      {jobs.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Template (optional)</label>
+                    <select value={selectedTemplate} onChange={(e) => setSelectedTemplate(e.target.value)} disabled={!selectedProject || loadingTemplates}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-60">
+                      <option value="">No template</option>
+                      {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Auto-route confidence threshold: <span className="text-violet-700">{confidencePct}%</span>
+                    </label>
+                    <input type="range" min={0} max={1} step={0.05} value={confidence}
+                      onChange={(e) => setConfidence(parseFloat(e.target.value))}
+                      className="w-full accent-violet-600" />
+                    <p className="text-xs text-slate-400 mt-1">
+                      Below this confidence, the AI only posts its analysis and leaves routing to a human.
+                    </p>
+                  </div>
+                </>
+              )}
 
               {otherOutcomeMeta.map((meta) => {
                 const config = otherRuleConfigs.find((r) => r.type === meta.type);
@@ -264,15 +289,15 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
           )}
 
           <div className="pt-2 border-t border-slate-100">
-            <label className="block text-sm font-medium text-slate-700 mb-1">Outbound email work item</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Outbound email connection</label>
             <p className="text-xs text-slate-500 mb-2">
-              Work item instantiated when an agent sends a ticket note as email from this queue.
-              Build/edit it in Obair (Work items).
+              SMTP connection used when an agent sends a ticket note as email from this queue.
+              Manage connections in Obair (Connections).
             </p>
-            <select value={emailWorkItemId} onChange={(e) => setEmailWorkItemId(e.target.value)} disabled={loadingWorkItems}
+            <select value={emailConnectionId} onChange={(e) => setEmailConnectionId(e.target.value)} disabled={loadingConnections}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-60">
-              <option value="">{loadingWorkItems ? "Loading…" : "None (send-as-email disabled)"}</option>
-              {workItems.map((wi) => <option key={wi.id} value={wi.id}>{wi.name}</option>)}
+              <option value="">{loadingConnections ? "Loading…" : "None (send-as-email disabled)"}</option>
+              {smtpConnections.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
 

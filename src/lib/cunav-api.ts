@@ -1,7 +1,7 @@
 // Cunav-specific API calls — ticket CRUD wrapping workflow endpoints,
 // plus queue (job) management.
 
-import type { Ticket, Queue, Job, TicketType, Priority, AiOutcomeFeedback, AiOutcomeRuleConfig, AiTicketOutcome } from "./types";
+import type { Ticket, Queue, Job, TicketType, Priority, AiOutcomeFeedback, AiOutcomeRuleConfig, AiTicketOutcome, Connection } from "./types";
 
 const BASE =
   typeof window === "undefined"
@@ -163,7 +163,7 @@ export interface UpdateQueuePayload {
   ai_togra_template_id?: string | null;
   ai_route_confidence_threshold?: number;
   ai_rules?: AiOutcomeRuleConfig[];
-  email_work_item_id?: string | null;
+  email_connection_id?: string | null;
 }
 
 export const updateQueue = (
@@ -175,3 +175,12 @@ export const updateQueue = (
 
 export const deleteQueue = (token: string, id: string): Promise<void> =>
   apiRequest(`/jobs/${id}`, token, { method: "DELETE" });
+
+// ── Connections (AWE-level, e.g. smtp) ────────────────────────────────────────
+
+export const listConnections = (token: string, params?: { team_id?: string }): Promise<Connection[]> => {
+  const qs = new URLSearchParams();
+  if (params?.team_id) qs.set("team_id", params.team_id);
+  const query = qs.toString() ? `?${qs}` : "";
+  return apiRequest(`/connections${query}`, token);
+};
