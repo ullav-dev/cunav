@@ -1,10 +1,16 @@
 import { AI_OUTCOME_REGISTRY, getOutcomeDefinition } from "../registry";
 import { AI_OUTCOME_META } from "../registry-meta";
 import { ROUTE_TO_TOGRA_TYPE } from "../route-to-togra";
+import { FLAG_DUPLICATE_TYPE } from "../flag-duplicate";
 
 describe("AI_OUTCOME_REGISTRY", () => {
   it("registers route_to_togra", () => {
     expect(AI_OUTCOME_REGISTRY.map((o) => o.type)).toContain(ROUTE_TO_TOGRA_TYPE);
+  });
+
+  it("registers flag_duplicate, proving the registry supports more than one outcome type", () => {
+    expect(AI_OUTCOME_REGISTRY.map((o) => o.type)).toContain(FLAG_DUPLICATE_TYPE);
+    expect(AI_OUTCOME_REGISTRY.length).toBeGreaterThan(1);
   });
 
   it("has a registry-meta entry for every registered outcome type", () => {

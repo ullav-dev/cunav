@@ -1,0 +1,110 @@
+import { z } from "zod";
+import { listTickets } from "@/lib/cunav-api";
+import { createNote } from "@/lib/notes-api";
+import { AI_DUPLICATE_NOTE_TITLE } from "@/lib/types";
+import type { AiOutcomeDefinition } from "./types";
+
+export const FLAG_DUPLICATE_TYPE = "flag_duplicate";
+
+const STOPWORDS = new Set([
+  "the", "and", "for", "are", "but", "not", "you", "your", "with", "this", "that",
+  "have", "has", "was", "were", "from", "when", "what", "then", "than", "into",
+  "can", "cant", "wont", "doesnt", "does", "did", "will", "would", "should",
+  "there", "their", "about", "again", "some", "just", "also", "please", "issue",
+  "ticket", "problem",
+]);
+
+/** Word set used for a cheap lexical-overlap similarity score — deliberately
+ *  not another LLM call (see CLAUDE.md: "v1 deliberately uses one structured
+ *  LLM call + deterministic follow-up calls, not an autonomous tool-use
+ *  loop"). Only the model's confidence that this ticket *resembles* known
+ *  territory comes from the triage call; which existing ticket it resembles
+ *  is resolved deterministically here. */
+function significantWords(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !STOPWORDS.has(w))
+  );
+}
+
+/** Overlap coefficient (intersection / smaller set), not Jaccard — Jaccard's
+ *  union-sized denominator unfairly punishes a short new ticket matched
+ *  against a long, detailed existing one even when every word in the short
+ *  one appears in the long one. Overlap coefficient asks "how much of the
+ *  smaller ticket's vocabulary shows up in the other one" instead. */
+function overlapCoefficient(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let intersection = 0;
+  for (const w of a) if (b.has(w)) intersection++;
+  return intersection / Math.min(a.size, b.size);
+}
+
+/** Minimum lexical-overlap score before a candidate is worth naming in the
+ *  note — independent of the AI's own confidence threshold (which gates
+ *  whether this outcome runs at all), this avoids naming a "best match" that
+ *  only shares a couple of common words in a small queue. */
+const MIN_MATCH_SCORE = 0.35;
+
+/** Flags a ticket that lexically resembles another ticket in the same queue
+ *  (regardless of that ticket's status — a match against a resolved ticket is
+ *  still useful, since it may point straight at the fix) by posting a note
+ *  naming the likely match — it never merges,
+ *  relinks, or changes ticket status/assignment itself. Contrast with
+ *  route-to-togra.ts, the only outcome type allowed to mutate the ticket:
+ *  a duplicate match is a judgment call for a human to confirm, not
+ *  something safe to act on unattended. */
+export const flagDuplicate: AiOutcomeDefinition = {
+  type: FLAG_DUPLICATE_TYPE,
+  label: "Flag possible duplicate",
+  defaultConfidenceThreshold: 0.6,
+  promptGuidance:
+    "Decide whether this ticket looks like it duplicates or closely overlaps another " +
+    "ticket already reported in the same queue — the same underlying bug, request, or " +
+    "question described again in different words. Only propose this with meaningful " +
+    "confidence when the report clearly resembles repeat/known territory, not just the " +
+    "same general area or ticket type.",
+  payloadSchema: z.object({}),
+
+  async run({ token, ticket }) {
+    if (!ticket.job_id) return { executed: false };
+
+    const candidates = (await listTickets(token, { job_id: ticket.job_id })).filter(
+      (t) => t.id !== ticket.id
+    );
+    if (candidates.length === 0) return { executed: false };
+
+    const ticketWords = significantWords(`${ticket.name} ${ticket.description ?? ""}`);
+    let best: { candidate: (typeof candidates)[number]; score: number } | null = null;
+    for (const candidate of candidates) {
+      const score = overlapCoefficient(
+        ticketWords,
+        significantWords(`${candidate.name} ${candidate.description ?? ""}`)
+      );
+      if (!best || score > best.score) best = { candidate, score };
+    }
+    if (!best || best.score < MIN_MATCH_SCORE) return { executed: false };
+
+    const label = best.candidate.ticket_number ? `#${best.candidate.ticket_number}` : best.candidate.id;
+    const matchPct = Math.round(best.score * 100);
+
+    const note = await createNote(token, {
+      entity_type: "workflow",
+      entity_id: ticket.id,
+      title: AI_DUPLICATE_NOTE_TITLE,
+      body:
+        `This ticket may duplicate ${label} — "${best.candidate.name}" (${matchPct}% word overlap). ` +
+        "Please review and merge or close if confirmed.",
+      is_shared: true,
+    });
+
+    return {
+      executed: true,
+      detail: `Possible duplicate of ${label} (${matchPct}% word overlap)`,
+      relatedWorkflowId: best.candidate.id,
+      noteId: note.id,
+    };
+  },
+};
