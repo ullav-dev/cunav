@@ -82,7 +82,14 @@ export async function POST(req: NextRequest) {
     }),
   });
 
-  if (!res.ok) return NextResponse.json({ error: "Failed to save settings" }, { status: 502 });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    console.error(`Failed to save AI settings: UUM PUT /users/me/ai-settings returned ${res.status}: ${detail}`);
+    return NextResponse.json(
+      { error: `Failed to save settings (UUM returned ${res.status})` },
+      { status: 502 }
+    );
+  }
   return NextResponse.json({ ok: true });
 }
 

@@ -19,31 +19,41 @@ import type { Ticket, Queue, AiOutcomeRuleConfig } from "@/lib/types";
 import { AI_ANALYSIS_NOTE_TITLE } from "@/lib/types";
 import { AI_OUTCOME_REGISTRY, getOutcomeDefinition } from "@/lib/ai-outcomes/registry";
 import { ROUTE_TO_TOGRA_TYPE } from "@/lib/ai-outcomes/route-to-togra";
+import type { AiOutcomeDefinition } from "@/lib/ai-outcomes/types";
 
 const TRIAGE_PROVIDER = (process.env.AI_TRIAGE_PROVIDER as AiProvider | undefined) ?? "anthropic";
 const TRIAGE_MODEL = process.env.AI_TRIAGE_MODEL;
 
-const TRIAGE_SYSTEM_PROMPT = `You are an AI triage assistant for a customer support ticket queue. For each incoming ticket:
+// Built per-queue, not once at module load: the model should only be asked
+// about (and only report confidence on) outcome types this queue actually has
+// enabled — a queue configured for duplicate detection alone shouldn't have
+// the model spending its judgment on (and the analysis note showing) an
+// "Auto-route to Togra" confidence nobody asked for.
+function buildTriageSystemPrompt(enabledOutcomes: AiOutcomeDefinition[]): string {
+  return `You are an AI triage assistant for a customer support ticket queue. For each incoming ticket:
 
 1. Write a short (2-4 sentence) analysis: likely root cause or category, whether it looks like a duplicate or known pattern, and a recommended next step for the support team.
 2. For each possible outcome type below, decide how confident you are (0.0-1.0) that it applies to this ticket, following that outcome type's specific guidance. Outcome types are not mutually exclusive — a well-formed ticket can also look like a duplicate of other work, for example.
 
 Outcome types you may propose:
-${AI_OUTCOME_REGISTRY.map((o) => `- "${o.type}": ${o.promptGuidance}`).join("\n\n")}
+${enabledOutcomes.map((o) => `- "${o.type}": ${o.promptGuidance}`).join("\n\n")}
 
 Only include an outcome type in your response if you have a genuine, non-zero view on it. Respond with ONLY a JSON object matching the required schema, no other text.`;
+}
 
-const TriageResultSchema = z.object({
-  analysis: z.string(),
-  outcomes: z.array(
-    z.object({
-      type: z.enum(AI_OUTCOME_REGISTRY.map((o) => o.type) as [string, ...string[]]),
-      confidence: z.number().min(0).max(1),
-    })
-  ),
-});
+function buildTriageResultSchema(enabledTypes: [string, ...string[]]) {
+  return z.object({
+    analysis: z.string(),
+    outcomes: z.array(
+      z.object({
+        type: z.enum(enabledTypes),
+        confidence: z.number().min(0).max(1),
+      })
+    ),
+  });
+}
 
-type TriageResult = z.infer<typeof TriageResultSchema>;
+type TriageResult = { analysis: string; outcomes: { type: string; confidence: number }[] };
 
 const FEEDBACK_HISTORY_LIMIT = 10;
 
@@ -86,13 +96,17 @@ function buildTicketPrompt(ticket: Ticket, feedbackContext: string[]): string {
   return lines.join("\n");
 }
 
-async function runTriageDecision(ticketPrompt: string): Promise<TriageResult> {
+async function runTriageDecision(
+  ticketPrompt: string,
+  enabledOutcomes: AiOutcomeDefinition[]
+): Promise<TriageResult> {
   const model = getAiModel(TRIAGE_PROVIDER, TRIAGE_MODEL);
+  const enabledTypes = enabledOutcomes.map((o) => o.type) as [string, ...string[]];
   try {
     const { object } = await generateObject({
       model,
-      schema: TriageResultSchema,
-      system: TRIAGE_SYSTEM_PROMPT,
+      schema: buildTriageResultSchema(enabledTypes),
+      system: buildTriageSystemPrompt(enabledOutcomes),
       prompt: ticketPrompt,
     });
     return object;
@@ -145,6 +159,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "skipped", reason: "queue is not AI-enabled" });
     }
 
+    // Only ask the model about (and only let it report confidence on) outcome
+    // types this queue actually has an enabled rule for — a queue configured
+    // for duplicate detection alone shouldn't produce an "Auto-route to
+    // Togra" confidence in the analysis note when that rule is off. Matches
+    // the `rule?.enabled ?? false` semantics used below when dispatching.
+    const ruleConfigs: AiOutcomeRuleConfig[] = Array.isArray(queue.ai_rules) ? queue.ai_rules : [];
+    const enabledDefinitions = AI_OUTCOME_REGISTRY.filter((def) =>
+      ruleConfigs.some((r) => r.type === def.type && r.enabled)
+    );
+    if (enabledDefinitions.length === 0) {
+      // Not claimed (no ai_processed_at stamp) — an admin enabling a rule
+      // later should still get this ticket triaged, not find it silently
+      // burned by an earlier no-op run.
+      return NextResponse.json({ status: "skipped", reason: "queue has no enabled AI outcome rules" });
+    }
+
     // Claim the ticket before doing any real work. awe-server's dispatch is
     // fire-and-forget and can fire twice for the same ticket (e.g. create
     // immediately followed by a queue move) — claiming up front, not after the
@@ -155,7 +185,7 @@ export async function POST(req: NextRequest) {
     await updateTicket(token, ticket.id, { ai_processed_at: new Date().toISOString() });
 
     const feedbackContext = await buildFeedbackContext(token, ticket.job_id).catch(() => []);
-    const decision = await runTriageDecision(buildTicketPrompt(ticket, feedbackContext));
+    const decision = await runTriageDecision(buildTicketPrompt(ticket, feedbackContext), enabledDefinitions);
 
     // Surfacing the model's self-reported confidence per outcome type lets a
     // human glance at past tickets and judge whether this ticket type/
@@ -175,7 +205,6 @@ export async function POST(req: NextRequest) {
       is_shared: true,
     });
 
-    const ruleConfigs: AiOutcomeRuleConfig[] = Array.isArray(queue.ai_rules) ? queue.ai_rules : [];
     let routeToTograExecuted = false;
     let routeToTograConfidence: number | null = null;
 
