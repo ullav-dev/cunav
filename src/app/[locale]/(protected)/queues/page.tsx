@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { listQueues, createQueue, updateQueue, deleteQueue, listTickets, filterCunavTickets } from "@/lib/cunav-api";
-import { getAweTeamIds } from "@/lib/auth-api";
+import { getSupportTeam } from "@/lib/auth-api";
 import type { Queue, Ticket } from "@/lib/types";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import AiQueueSettingsModal from "@/components/AiQueueSettingsModal";
@@ -22,26 +22,41 @@ function formatDateTime(iso: string): string {
 }
 
 interface CreateQueueModalProps {
-  teamIds: string[];
   token: string;
   onClose: () => void;
   onCreated: (q: Queue) => void;
 }
 
-function CreateQueueModal({ teamIds, token, onClose, onCreated }: CreateQueueModalProps) {
+// Every cunav queue is created under the one team flagged "Support" in
+// ullav-portal (ullav-user-management's teams.is_support_team) — resolved
+// here, never picked from the creating agent's own team memberships. That
+// used to default silently to teamIds[0] (whichever obair-enabled team
+// happened to come first in the JWT), which is how queues ended up scattered
+// across unrelated teams with no one having chosen that. See CLAUDE.md.
+function CreateQueueModal({ token, onClose, onCreated }: CreateQueueModalProps) {
   const t = useTranslations("queues");
   const tm = useTranslations("queues.modal");
   const [name, setName] = useState("");
-  const [teamId, setTeamId] = useState(teamIds[0] ?? "");
+  const [supportTeamId, setSupportTeamId] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    getSupportTeam(token)
+      .then((team) => setSupportTeamId(team?.id ?? null))
+      .catch(() => setSupportTeamId(null))
+      .finally(() => setResolving(false));
+  }, [token]);
+
+  const blocked = !resolving && !supportTeamId;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || !supportTeamId) return;
     setSaving(true); setError(null);
     try {
-      const queue = await createQueue(token, { name: name.trim(), team_id: teamId || undefined });
+      const queue = await createQueue(token, { name: name.trim(), team_id: supportTeamId });
       onCreated(queue);
       onClose();
     } catch (err) {
@@ -66,12 +81,13 @@ function CreateQueueModal({ teamIds, token, onClose, onCreated }: CreateQueueMod
             <input required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={tm("namePlaceholder")}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400" />
           </div>
+          {blocked && <p className="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2">{tm("noSupportTeam")}</p>}
           {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
           <div className="flex gap-3 justify-end pt-2 border-t border-slate-100">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">{tm("cancel")}</button>
-            <button type="submit" disabled={saving || !name.trim()}
+            <button type="submit" disabled={saving || resolving || blocked || !name.trim()}
               className="px-4 py-2 text-sm font-medium bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white rounded-lg transition-colors">
-              {saving ? tm("creating") : tm("create")}
+              {resolving ? tm("resolvingTeam") : saving ? tm("creating") : tm("create")}
             </button>
           </div>
         </form>
@@ -97,8 +113,6 @@ export default function QueuesPage() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
-
-  const teamIds = getAweTeamIds(token ?? null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -346,7 +360,6 @@ export default function QueuesPage() {
 
       {showCreate && (
         <CreateQueueModal
-          teamIds={teamIds}
           token={token!}
           onClose={() => setShowCreate(false)}
           onCreated={(queue) => setQueues((prev) => [queue, ...prev])}
