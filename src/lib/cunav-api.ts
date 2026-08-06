@@ -40,11 +40,16 @@ export function filterCunavTickets(tickets: Ticket[], queues: Queue[]): Ticket[]
 
 export const listTickets = (
   token: string,
-  params?: { job_id?: string; team_id?: string }
+  params?: { job_id?: string; team_id?: string; organization_id?: string }
 ): Promise<Ticket[]> => {
   const qs = new URLSearchParams();
   if (params?.job_id) qs.set("job_id", params.job_id);
   else if (params?.team_id) qs.set("team_id", params.team_id);
+  // Every ticket across every team within the organization — e.g. duplicate
+  // detection scanning queues that belong to different teams but the same
+  // organization, instead of being confined to one team. See awe-server's
+  // GET /workflows organization_id param (065_organization_scoping.sql).
+  else if (params?.organization_id) qs.set("organization_id", params.organization_id);
   const query = qs.toString() ? `?${qs}` : "";
   return apiRequest(`/workflows${query}`, token);
 };
@@ -138,9 +143,15 @@ export const updateTicketOutcomeFeedback = (
 
 // ── Queues (jobs with job_type = "queue") ─────────────────────────────────────
 
-export const listQueues = async (token: string, params?: { team_id?: string }): Promise<Queue[]> => {
+export const listQueues = async (
+  token: string,
+  params?: { team_id?: string; organization_id?: string }
+): Promise<Queue[]> => {
   const qs = new URLSearchParams();
   if (params?.team_id) qs.set("team_id", params.team_id);
+  // Every queue across every team within the organization, not just one team
+  // — see awe-server's GET /jobs organization_id param (065_organization_scoping.sql).
+  else if (params?.organization_id) qs.set("organization_id", params.organization_id);
   const jobs = await apiRequest<Job[]>(`/jobs?${qs}`, token);
   return jobs.filter((j): j is Queue => j.job_type === "queue");
 };

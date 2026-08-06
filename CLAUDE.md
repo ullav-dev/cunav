@@ -45,6 +45,39 @@ ALTER TABLE workflows ADD COLUMN external_reporter_email TEXT;
 
 Apply this migration to awe-server before running cunav against a real backend.
 
+## Organizations (Multi-Tenancy)
+
+An `Organization` (`ullav-user-management`, `031_organizations.sql`) is an optional tenant
+boundary that owns Teams — most teams have none yet, since no app besides Tack has adopted
+organizations. awe-server denormalizes `organization_id` alongside `team_id` on every table
+that already carries one (`jobs`, `workflows`, `projects`, `connections`, `work_items`,
+`scheduled_scripts` — see its `065_organization_scoping.sql`), the same reasoning as
+`team_id` itself: teams (and organizations) live in UUM with no local FK. `GET /jobs` and
+`GET /workflows` accept an `organization_id` query param that returns everything across
+*every team* within that organization, not just the caller's own team — this is what lets
+cunav search across queues that belong to different teams but the same organization (e.g.
+duplicate-ticket detection spanning Business + Catch-All, even if an admin ever splits them
+across teams again).
+
+- **Support team**: `teams.is_support_team` (UUM, `032_team_support_flag.sql`) flags the one
+  team per organization that owns every cunav ticket queue — set via ullav-portal's admin
+  Teams panel, resolved via `GET /teams/support` (`src/lib/auth-api.ts`'s `getSupportTeam`).
+  No team id/name is ever hardcoded in cunav. `CreateQueueModal` blocks queue creation with a
+  clear message if none is configured yet, rather than falling back to something arbitrary
+  (the old bug this replaced: queue creation silently defaulted to the creating agent's own
+  first team).
+- **`NEXT_PUBLIC_CUNAV_ORGANIZATION_ID`** (optional): cunav is single-tenant per deployment
+  today — there's no per-request "which organization is this for" to derive, so the
+  deployment's own organization (if any) is a build-time constant, not resolved per user.
+  Omitted, `GET /teams/support` still resolves unambiguously as long as only one organization
+  has a Support team flagged anywhere; once a second one does, callers get a `400` telling
+  them to pass `organization_id` explicitly rather than the lookup guessing — see UUM's
+  `SupportTeamLookup::Ambiguous`. Set this once cunav's deployment maps to a specific
+  organization. Public (not server-only) because an organization id isn't sensitive — the
+  browser already sees team ids in its own JWT.
+- `listQueues`/`listTickets` (`src/lib/cunav-api.ts`) both accept `organization_id` as an
+  alternative to `team_id`, for the same org-wide scanning use case.
+
 ## Key Files
 
 | File | Purpose |
@@ -111,6 +144,7 @@ SETTINGS_ENCRYPTION_KEY=              # AES-256-GCM key encrypting personal API 
 NEXT_PUBLIC_APP_VERSION=              # set by build
 NEXT_PUBLIC_GIT_SHA=                  # set by build
 NEXT_PUBLIC_IDLE_TIMEOUT_MS=3600000   # optional override
+NEXT_PUBLIC_CUNAV_ORGANIZATION_ID=    # optional — see "Organizations" below
 ```
 
 ## Common Commands
