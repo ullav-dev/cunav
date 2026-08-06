@@ -159,7 +159,14 @@ export async function getSupportTeam(
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
   });
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Failed to resolve Support team: HTTP ${res.status}`);
+  if (!res.ok) {
+    // 400 here means UUM found more than one organization's Support team and
+    // needs organizationId to disambiguate (see get_support_team's
+    // SupportTeamLookup::Ambiguous) — surface its actual message rather than
+    // a bare status code, since "which org" is real, actionable information.
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error ?? `Failed to resolve Support team: HTTP ${res.status}`);
+  }
   return res.json() as Promise<SupportTeam>;
 }
 
