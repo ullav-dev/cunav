@@ -130,6 +130,46 @@ export function hasTograAccess(token: string | null): boolean {
   );
 }
 
+export interface SupportTeam {
+  id: string;
+  slug: string;
+  name: string;
+}
+
+/** Resolves "the team that owns every cunav ticket queue" — see
+ *  ullav-user-management's `teams.is_support_team` flag, set via its
+ *  admin TeamsPanel. No id/name is ever hardcoded on the cunav side.
+ *  `organizationId` is currently always omitted (resolves the default,
+ *  org-less bucket) since cunav hasn't adopted multi-tenancy — pass it once
+ *  cunav gains an organization context to resolve per-tenant instead.
+ *  Returns `null`, not a thrown error, if no team is flagged yet — a real,
+ *  expected state (e.g. a fresh deployment) that callers must handle. */
+export async function getSupportTeam(
+  token: string | null,
+  organizationId?: string
+): Promise<SupportTeam | null> {
+  if (!token) return null;
+  const qs = organizationId ? `?organization_id=${encodeURIComponent(organizationId)}` : "";
+  // Not routed through authRequest: a 404 here is a real, expected "none
+  // configured yet" state, not an error to throw — UUM's NotFound variant
+  // also returns the same generic {"error":"user not found"} body used by
+  // every other 404 in that codebase, so status code is the only reliable
+  // way to distinguish it from an actual failure.
+  const res = await fetch(`${BASE}/teams/support${qs}`, {
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    // 400 here means UUM found more than one organization's Support team and
+    // needs organizationId to disambiguate (see get_support_team's
+    // SupportTeamLookup::Ambiguous) — surface its actual message rather than
+    // a bare status code, since "which org" is real, actionable information.
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error ?? `Failed to resolve Support team: HTTP ${res.status}`);
+  }
+  return res.json() as Promise<SupportTeam>;
+}
+
 export function isAdmin(token: string | null): boolean {
   if (!token) return false;
   const payload = decodePayload(token);
