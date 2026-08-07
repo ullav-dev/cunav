@@ -26,12 +26,25 @@ import DuplicateLinkPanel from "@/components/DuplicateLinkPanel";
 import FeedbackReasonModal from "@/components/FeedbackReasonModal";
 import { useAppUrls } from "@/contexts/AppUrlsContext";
 import { useResize } from "@/hooks/useResize";
+import { useInterval } from "@/hooks/useInterval";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 const STATUSES: Status[] = ["Not Started", "Ready", "In Progress", "On Hold", "Complete", "Cancelled"];
 const TICKET_TYPES: TicketType[] = ["bug", "feature", "question", "improvement", "task"];
 const PRIORITIES: Priority[] = ["critical", "high", "medium", "low"];
+
+// Matches tickets/page.tsx's own REFRESH_OPTIONS — same shape, same
+// localStorage key (below), so the auto-refresh interval a user picks on
+// either page is one shared preference, not two independently-set ones.
+const REFRESH_OPTIONS: { label: string; ms: number | null }[] = [
+  { label: "Manual", ms: null },
+  { label: "1 min", ms: 60_000 },
+  { label: "5 min", ms: 300_000 },
+  { label: "10 min", ms: 600_000 },
+  { label: "30 min", ms: 1_800_000 },
+  { label: "1 hr", ms: 3_600_000 },
+];
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -67,6 +80,17 @@ export default function TicketDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Bumped on every successful refresh (manual or auto) — passed to NotesPanel
+  // as refreshSignal so an agent's open note stays open instead of the panel
+  // resetting on every tick. Not itself the auto-refresh setting; see
+  // autoRefreshMs below for that.
+  const [refreshSignal, setRefreshSignal] = useState(0);
+  const [autoRefreshMs, setAutoRefreshMs] = useState<number | null>(() => {
+    try {
+      const stored = localStorage.getItem("cunav_refresh_interval");
+      return stored ? Number(stored) : null;
+    } catch { return null; }
+  });
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [editingDesc, setEditingDesc] = useState(false);
@@ -85,9 +109,13 @@ export default function TicketDetailPage() {
   const titleRef = useRef<HTMLInputElement>(null);
   const rightResize = useResize({ initial: 480, min: 320, max: Infinity, axis: "x", reverse: true });
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!token || !id) return;
-    setLoading(true); setError(null);
+    // Silent = manual-refresh button or an auto-refresh tick: re-fetch in the
+    // background without blanking the page with the full spinner below,
+    // which would otherwise interrupt an agent mid-read or mid-edit every
+    // time the interval fires.
+    if (!opts?.silent) { setLoading(true); setError(null); }
     try {
       const [ticketData, queuesData] = await Promise.all([
         getTicket(token, id),
@@ -96,14 +124,18 @@ export default function TicketDetailPage() {
       setTicket(ticketData);
       setQueues(queuesData);
       markRead(ticketData.id);
+      setRefreshSignal((n) => n + 1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load ticket");
+      if (!opts?.silent) setError(err instanceof Error ? err.message : "Failed to load ticket");
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, [token, id]);
 
   useEffect(() => { load(); }, [load]);
+
+  const refresh = useCallback(() => load({ silent: true }), [load]);
+  useInterval(refresh, autoRefreshMs);
 
   // Resolve reporter_id (may be a real user or a service account, e.g. the
   // MCP server) to a display name — but only when there's no external
@@ -388,7 +420,25 @@ export default function TicketDetailPage() {
             <span className="text-sm text-slate-700 font-medium truncate">{ticket.name}</span>
             {saving && <span className="text-xs text-slate-400 ml-1 shrink-0">Saving…</span>}
           </div>
-          <button onClick={() => setConfirmDelete(true)} className="shrink-0 p-1.5 text-slate-400 hover:text-red-500 transition-colors rounded ml-4" title="Delete ticket">
+          <div className="flex items-center gap-1 shrink-0 ml-4">
+            <button onClick={refresh} title="Refresh now" className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors">
+              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                <path d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z"/>
+              </svg>
+            </button>
+            <select value={autoRefreshMs ?? ""} onChange={(e) => {
+              const val = e.target.value ? Number(e.target.value) : null;
+              setAutoRefreshMs(val);
+              try {
+                if (val) localStorage.setItem("cunav_refresh_interval", String(val));
+                else localStorage.removeItem("cunav_refresh_interval");
+              } catch { /* storage unavailable */ }
+            }}
+              className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:border-violet-400 focus:outline-none bg-white text-slate-600" title="Auto-refresh">
+              {REFRESH_OPTIONS.map((o) => <option key={o.label} value={o.ms ?? ""}>{o.label}</option>)}
+            </select>
+          </div>
+          <button onClick={() => setConfirmDelete(true)} className="shrink-0 p-1.5 text-slate-400 hover:text-red-500 transition-colors rounded ml-2" title="Delete ticket">
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z"/></svg>
           </button>
         </div>
@@ -626,7 +676,7 @@ export default function TicketDetailPage() {
               <h2 className="text-sm font-semibold text-slate-700">{t("notesTitle")}</h2>
             </div>
             <div className="flex-1 overflow-hidden min-h-0 px-4 py-3">
-              <NotesPanel entityType="workflow" entityId={ticket.id} isTeam folderOrientation="vertical" renderNoteActions={renderSendEmailAction} />
+              <NotesPanel entityType="workflow" entityId={ticket.id} isTeam folderOrientation="vertical" renderNoteActions={renderSendEmailAction} refreshSignal={refreshSignal} />
             </div>
           </div>
         </div>
@@ -747,7 +797,7 @@ export default function TicketDetailPage() {
             <div className="flex-1 overflow-hidden p-4 flex flex-col min-h-0">
               {explorerTab === "notes" && (
                 <div className="flex-1 min-h-0">
-                  <NotesPanel entityType="workflow" entityId={ticket.id} isTeam twoColumn renderNoteActions={renderSendEmailAction} />
+                  <NotesPanel entityType="workflow" entityId={ticket.id} isTeam twoColumn renderNoteActions={renderSendEmailAction} refreshSignal={refreshSignal} />
                 </div>
               )}
               {explorerTab === "ai" && (

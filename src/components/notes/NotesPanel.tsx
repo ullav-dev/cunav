@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, type ReactNode } from "react";
+import { useEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { useResize } from "@/hooks/useResize";
 import ReactMarkdown from "react-markdown";
@@ -238,9 +238,15 @@ interface NotesPanelProps {
    *  stay in NoteView itself; this is for actions available regardless of ownership,
    *  e.g. cunav's "Send as email"). */
   renderNoteActions?: (note: Note) => ReactNode;
+  /** Bump this (e.g. a timestamp) to trigger a background refetch — used by the
+   *  parent's manual-refresh button / auto-refresh interval. Deliberately
+   *  separate from the initial mount load: this one is silent (no "Loading
+   *  notes…" placeholder blanking the panel, no change to selectedId/mode),
+   *  since a note the agent has open should stay open across a refresh. */
+  refreshSignal?: number;
 }
 
-export default function NotesPanel({ entityType, entityId, isTeam, compact = false, twoColumn = false, members = [], folderOrientation = "horizontal", autoSelectFirst = false, renderNoteActions }: NotesPanelProps) {
+export default function NotesPanel({ entityType, entityId, isTeam, compact = false, twoColumn = false, members = [], folderOrientation = "horizontal", autoSelectFirst = false, renderNoteActions, refreshSignal }: NotesPanelProps) {
   const { user, token } = useAuth();
   const t = useTranslations("notes");
   const [notes, setNotes] = useState<Note[]>([]);
@@ -275,9 +281,10 @@ export default function NotesPanel({ entityType, entityId, isTeam, compact = fal
     return id.slice(0, 8) + "…";
   };
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!token) return;
-    setLoading(true); setError(null);
+    if (!opts?.silent) setLoading(true);
+    setError(null);
     const [notesResult, foldersData] = await Promise.all([
       listNotes(token, entityType, entityId).then(
         (d) => ({ ok: true as const, data: d }),
@@ -285,8 +292,8 @@ export default function NotesPanel({ entityType, entityId, isTeam, compact = fal
       ),
       listNoteFolders(token).catch(() => [] as NoteFolder[]),
     ]);
-    setLoading(false);
-    if (!notesResult.ok) { setError(notesResult.error); return; }
+    if (!opts?.silent) setLoading(false);
+    if (!notesResult.ok) { if (!opts?.silent) setError(notesResult.error); return; }
     setNotes(notesResult.data);
     setFolders(foldersData);
     if (autoSelectFirst && notesResult.data.length > 0) {
@@ -297,6 +304,18 @@ export default function NotesPanel({ entityType, entityId, isTeam, compact = fal
   }, [token, entityType, entityId, autoSelectFirst]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Parent-driven silent refresh (manual refresh button / auto-refresh
+  // interval) — skipped on the very first render, since `load()` above
+  // already covers that (refreshSignal starts undefined/0, and this only
+  // fires on a genuine change).
+  const isFirstRefreshSignal = useRef(true);
+  useEffect(() => {
+    if (refreshSignal === undefined) return;
+    if (isFirstRefreshSignal.current) { isFirstRefreshSignal.current = false; return; }
+    load({ silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshSignal]);
 
   const topLevel = notes.filter((n) => !n.parent_id);
   const selectedNote = topLevel.find((n) => n.id === selectedId) ?? null;
@@ -389,7 +408,7 @@ export default function NotesPanel({ entityType, entityId, isTeam, compact = fal
   if (error) return (
     <div className="text-sm text-red-600 py-4 text-center">
       {error}
-      <button onClick={load} className="block mx-auto mt-2 text-xs text-violet-700 hover:underline">{t("retry")}</button>
+      <button onClick={() => load()} className="block mx-auto mt-2 text-xs text-violet-700 hover:underline">{t("retry")}</button>
     </div>
   );
 
