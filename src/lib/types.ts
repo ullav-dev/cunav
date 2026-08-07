@@ -65,6 +65,11 @@ export interface Job {
   status: Status;
   schedule_status: ScheduleStatus;
   team_id: string | null;
+  /** Denormalized alongside team_id — teams (and organizations) live in UUM
+   *  with no local FK. Lets org-wide queries (duplicate detection across
+   *  every queue in the organization, not just one team) skip a UUM
+   *  round-trip. See CLAUDE.md "Organizations (Multi-Tenancy)". */
+  organization_id: string | null;
   project_id: string | null;
   job_type: "sprint" | "kanban" | "backlog" | "queue" | null;
   created_at: string;
@@ -116,6 +121,8 @@ export interface Workflow {
   schedule_status: ScheduleStatus;
   job_id: string | null;
   team_id: string | null;
+  /** See Job.organization_id — same denormalization, same reasoning. */
+  organization_id: string | null;
   is_shared: boolean;
   sort_order: number | null;
   story_points: number | null;

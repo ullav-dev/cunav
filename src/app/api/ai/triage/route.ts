@@ -164,6 +164,11 @@ export async function POST(req: NextRequest) {
     // for duplicate detection alone shouldn't produce an "Auto-route to
     // Togra" confidence in the analysis note when that rule is off. Matches
     // the `rule?.enabled ?? false` semantics used below when dispatching.
+    //
+    // Split further into LLM-judged vs deterministic (see flag-duplicate.ts):
+    // deterministic types are never put to the model at all — nothing to ask
+    // it to guess — so they're excluded from the prompt/schema and run
+    // unconditionally below instead, driven by the queue's rule config.
     const ruleConfigs: AiOutcomeRuleConfig[] = Array.isArray(queue.ai_rules) ? queue.ai_rules : [];
     const enabledDefinitions = AI_OUTCOME_REGISTRY.filter((def) =>
       ruleConfigs.some((r) => r.type === def.type && r.enabled)
@@ -174,6 +179,8 @@ export async function POST(req: NextRequest) {
       // burned by an earlier no-op run.
       return NextResponse.json({ status: "skipped", reason: "queue has no enabled AI outcome rules" });
     }
+    const llmDefinitions = enabledDefinitions.filter((def) => !def.deterministic);
+    const deterministicDefinitions = enabledDefinitions.filter((def) => def.deterministic);
 
     // Claim the ticket before doing any real work. awe-server's dispatch is
     // fire-and-forget and can fire twice for the same ticket (e.g. create
@@ -185,7 +192,14 @@ export async function POST(req: NextRequest) {
     await updateTicket(token, ticket.id, { ai_processed_at: new Date().toISOString() });
 
     const feedbackContext = await buildFeedbackContext(token, ticket.job_id).catch(() => []);
-    const decision = await runTriageDecision(buildTicketPrompt(ticket, feedbackContext), enabledDefinitions);
+    // If every enabled rule on this queue is deterministic (e.g. duplicate
+    // detection only), there's nothing to ask the model to judge — skip the
+    // call entirely rather than pass buildTriageResultSchema an empty type
+    // union (z.enum requires at least one member).
+    const decision: TriageResult =
+      llmDefinitions.length > 0
+        ? await runTriageDecision(buildTicketPrompt(ticket, feedbackContext), llmDefinitions)
+        : { analysis: "No AI judgment configured for this queue — automated checks only.", outcomes: [] };
 
     // Surfacing the model's self-reported confidence per outcome type lets a
     // human glance at past tickets and judge whether this ticket type/
@@ -204,6 +218,34 @@ export async function POST(req: NextRequest) {
       body: analysisBody,
       is_shared: true,
     });
+
+    // Deterministic outcome types (e.g. flag_duplicate) run unconditionally
+    // here, driven only by the queue's rule config — not by decision.outcomes,
+    // since the model was never asked about them and may not even have run.
+    // Their own returned confidence (a real computed score, not a guess) is
+    // what gets persisted on the ai_ticket_outcomes row.
+    for (const definition of deterministicDefinitions) {
+      let result: { executed: boolean; detail?: string; relatedWorkflowId?: string; noteId?: string; confidence?: number } = {
+        executed: false,
+      };
+      let executionError: string | undefined;
+      try {
+        result = await definition.run({ token, ticket, queue, confidence: 0 });
+      } catch (err) {
+        executionError = err instanceof Error ? err.message : String(err);
+        console.error(`AI triage: deterministic outcome executor "${definition.type}" failed for ticket ${ticket.id}:`, err);
+      }
+
+      await createTicketOutcome(token, ticket.id, {
+        outcome_type: definition.type,
+        confidence: result.confidence ?? 0,
+        executed: result.executed,
+        execution_error: executionError,
+        related_workflow_id: result.relatedWorkflowId,
+        detail: result.detail,
+        note_id: result.noteId,
+      }).catch((err) => console.error("AI triage: failed to persist outcome row:", err));
+    }
 
     let routeToTograExecuted = false;
     let routeToTograConfidence: number | null = null;
