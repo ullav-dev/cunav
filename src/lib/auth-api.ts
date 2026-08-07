@@ -298,6 +298,14 @@ export interface ResolvedUser {
 export const resolveUsers = (token: string, ids: string[]): Promise<ResolvedUser[]> =>
   authRequest(`/users/resolve?ids=${ids.map(encodeURIComponent).join(",")}`, {}, token);
 
+/** Resolves one internal user's email — separate from resolveUsers above,
+ *  which deliberately never returns email. Requires cunav product access
+ *  (any team); lets an agent email a ticket's internal reporter the same
+ *  way "Send as email" already can an external one. See UUM's
+ *  GET /users/{id}/email. */
+export const getUserEmail = (token: string, userId: string): Promise<{ email: string }> =>
+  authRequest(`/users/${encodeURIComponent(userId)}/email`, {}, token);
+
 export async function gravatarUrl(email: string, size = 200): Promise<string> {
   const normalized = email.trim().toLowerCase();
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));

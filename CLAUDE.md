@@ -196,13 +196,33 @@ autonomous tool-use loop — see the conversation history for the fuller design 
 Later phases may move the processing step into an AWE-native `task_scripts` step and/or
 widen the AI's tool access once auto-routing is trusted.
 
+## Duplicate Ticket Linking
+
+Lets an agent (or a confirmed AI suggestion) mark one ticket as a duplicate of another —
+`workflows.duplicate_of_workflow_id` (nullable, self-referencing FK, awe-server migration
+`067_workflow_duplicate_links.sql`). A ticket can be "a duplicate of" at most one other
+ticket at a time (plain column, not a join table); any number of tickets may point at the
+same target, so "what's marked as a duplicate of this ticket" is just
+`GET /workflows/{id}/duplicates`. Set/unset via `PUT`/`DELETE /workflows/{id}/duplicate-of`
+(`src/lib/cunav-api.ts`'s `setTicketDuplicateOf`/`clearTicketDuplicateOf`).
+
+`flag_duplicate` deliberately does **not** set this column itself — same "AI never mutates
+a ticket unattended" principle as everywhere else in this doc (`route_to_togra` is the sole
+exception). It only ever suggests a match via `ai_ticket_outcomes.related_workflow_id`
+(unchanged). `src/components/DuplicateLinkPanel.tsx` (rendered on the ticket detail page)
+is what turns a suggestion into a real link: it reads the ticket's own `flag_duplicate`
+outcome row and shows a Confirm/Dismiss banner when no link is set yet, plus a manual
+"Mark as duplicate of…" picker (searches tickets in the same queue) for agent-initiated
+links independent of any AI suggestion. It also renders the reverse list (duplicates *of*
+this ticket) and an unlink action for a confirmed link.
+
 ## Outbound Email ("Send as email")
 
 Built on AWE's generic `email` script_type + connection primitives (see awe-server
 migration `063_email_script_type.sql`), not a cunav-specific email service or a
 scripted work item — the runner sends directly via SMTP (lettre), no Python
-subprocess involved. A note can be sent to a ticket's `external_reporter_email` as
-raw SMTP mail:
+subprocess involved. A note can be sent to a ticket's reporter (external or internal —
+see point 5 below) as raw SMTP mail:
 
 1. An awe-server `smtp` connection (host/port/username config, password secret) is
    created once in Obair (Connections) and picked directly by the queue admin — no
@@ -238,9 +258,16 @@ raw SMTP mail:
    separate catch-all domain/DNS to set up. `run_email` in awe-runner
    (`awe-server/src/bin/awe_runner.rs`) reads the resulting `reply_to` input and sets the
    message's Reply-To header via lettre. See Inbound Email below for the poll side.
-5. Only `external_reporter_email` is available today — UUM's `/users/resolve` deliberately
-   excludes email, so emailing an internal reporter's own address is out of scope until
-   that's revisited.
+5. Recipient resolution: `external_reporter_email` if set, otherwise `reporter_id`'s own
+   email resolved via UUM's `GET /users/{id}/email` — a dedicated, auth-gated endpoint
+   (any caller with `cunav` product access, not restricted to a shared team with the
+   target user), separate from `GET /users/resolve` which deliberately never returns
+   email at all. An internal reporter has a real email too; there was never a good
+   reason to only support the external case. `reporter_id` defaults to the ticket's
+   creator when unset (see `create_workflow`), so this is available on nearly every
+   ticket now, not just ones with an explicit external reporter. The ticket detail page
+   also labels the reporter field "External"/"Internal" — previously implicit, inferred
+   only from which fields happened to be populated.
 6. `src/app/api/tickets/[id]/send-email/status/route.ts` lets the frontend poll the
    created task's real outcome (`GET /tasks/{id}` + `/tasks/{id}/runs` for the error
    detail on failure) instead of treating "queued successfully" as "delivered" — the
@@ -269,7 +296,17 @@ need this because it's triggered by a human action, not a clock.
    Outbound Email above) — one connection, one mailbox, used by both directions: the poll
    reads from it, outbound Reply-To addresses are built from its `config.username`. A
    queue with no inbound connection configured simply gets no Reply-To on its outbound
-   mail (falls back to subject-tag resolution only, point 4 below).
+   mail (falls back to subject-tag resolution only, point 4 below). **Polls `INBOX` plus
+   any top-level folder whose name looks like a ticket reference** (e.g. `TKT-0020`) —
+   some providers (confirmed on Migadu) file plus-addressed mail
+   (`local+TKT-0020@domain`) into a folder named after the tag instead of leaving it in
+   `INBOX`; a provider that doesn't do this just never has any matching folders, so
+   `INBOX`-only delivery keeps working unchanged. Each folder gets its own independently
+   persisted `{last_uid, uidvalidity}` in the schedule's `state` (now `{folders: {...},
+   seen_message_ids: [...]}`, migrated automatically from the older flat shape on first
+   run under this version). A newly-discovered ticket folder has everything in it
+   processed immediately (no backlog to skip — its existence means a reply just
+   arrived); `INBOX` keeps its original first-run baseline-skip behavior.
 2. The script's only privileged action is one HTTP POST per new message to cunav's
    `src/app/api/email/inbound/route.ts`, authenticated via a shared secret
    (`X-Email-Webhook-Secret` / `CUNAV_EMAIL_WEBHOOK_SECRET`) — it does **not** carry an

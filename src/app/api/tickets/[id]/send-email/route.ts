@@ -2,11 +2,35 @@ import { NextRequest, NextResponse } from "next/server";
 import { ticketId as formatTicketId } from "@/lib/ticket-id";
 
 const API_URL = process.env.API_URL ?? "http://localhost:8085";
+const AUTH_URL = process.env.AUTH_URL ?? "http://localhost:8081";
 
 interface TicketRow {
   job_id: string | null;
   ticket_number: number | null;
   external_reporter_email: string | null;
+  /** A real UUM user, distinct from external_reporter_*. Only used to look
+   *  up an email to send to when there's no external_reporter_email — see
+   *  resolveRecipientEmail. */
+  reporter_id: string | null;
+}
+
+/** external_reporter_email always wins when set (a ticket may have both
+ *  fields for edge cases like a UUM user who filed via a channel that also
+ *  captured a raw email, but the explicit external field is the more
+ *  deliberate one). Otherwise falls back to resolving reporter_id's own
+ *  email via UUM — internal reporters have real accounts and a real email
+ *  just like an external one, there was never a good reason to only support
+ *  one of the two. Returns null (not an error) if neither is available, so
+ *  the caller can produce one clear "no recipient" message either way. */
+async function resolveRecipientEmail(ticket: TicketRow, authHeader: string): Promise<string | null> {
+  if (ticket.external_reporter_email) return ticket.external_reporter_email;
+  if (!ticket.reporter_id) return null;
+  const res = await fetch(`${AUTH_URL}/users/${ticket.reporter_id}/email`, {
+    headers: { Authorization: authHeader },
+  });
+  if (!res.ok) return null;
+  const data: { email: string } = await res.json();
+  return data.email || null;
 }
 
 interface JobRow {
@@ -80,8 +104,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!ticketRes.ok) return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
   const ticket: TicketRow = await ticketRes.json();
 
-  if (!ticket.external_reporter_email) {
-    return NextResponse.json({ error: "Ticket has no external reporter email set" }, { status: 400 });
+  const recipientEmail = await resolveRecipientEmail(ticket, authHeader);
+  if (!recipientEmail) {
+    return NextResponse.json(
+      { error: "Ticket has no reporter email available — set an external reporter email, or assign an internal reporter" },
+      { status: 400 }
+    );
   }
   if (!ticket.job_id) {
     return NextResponse.json({ error: "Ticket has no queue" }, { status: 400 });
@@ -155,7 +183,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     method: "PATCH",
     body: JSON.stringify({
       values: {
-        to: ticket.external_reporter_email,
+        to: recipientEmail,
         subject: taggedSubject,
         body_text: body,
         ...(replyTo ? { reply_to: replyTo } : {}),
@@ -168,5 +196,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   const updatedTask = await inputsRes.json();
 
-  return NextResponse.json({ task_id: task.id, status: updatedTask.status });
+  // recipient_email echoed back so the client can log an audit note without
+  // needing to separately resolve an internal reporter's address itself.
+  return NextResponse.json({ task_id: task.id, status: updatedTask.status, recipient_email: recipientEmail });
 }
