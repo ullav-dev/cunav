@@ -106,6 +106,26 @@ export const updateTicket = (token: string, id: string, patch: UpdateTicketPaylo
 export const deleteTicket = (token: string, id: string): Promise<void> =>
   apiRequest(`/workflows/${id}`, token, { method: "DELETE" });
 
+// ── Duplicate ticket linking ─────────────────────────────────────────────────
+// A ticket can be marked "a duplicate of" at most one other ticket; any number
+// of tickets may point at the same target. flag_duplicate never sets this
+// itself — it only suggests via an ai_ticket_outcomes row's
+// related_workflow_id (see listTicketOutcomes above); these three calls are
+// what actually create/remove/read the confirmed link.
+
+export const setTicketDuplicateOf = (token: string, id: string, duplicateOfWorkflowId: string): Promise<Ticket> =>
+  apiRequest(`/workflows/${id}/duplicate-of`, token, {
+    method: "PUT",
+    body: JSON.stringify({ duplicate_of_workflow_id: duplicateOfWorkflowId }),
+  });
+
+export const clearTicketDuplicateOf = (token: string, id: string): Promise<Ticket> =>
+  apiRequest(`/workflows/${id}/duplicate-of`, token, { method: "DELETE" });
+
+/** Every ticket marked as a duplicate of this one (reverse lookup). */
+export const listTicketDuplicates = (token: string, id: string): Promise<Ticket[]> =>
+  apiRequest(`/workflows/${id}/duplicates`, token);
+
 // ── AI ticket outcomes ─────────────────────────────────────────────────────
 
 export const listTicketOutcomes = (token: string, ticketId: string): Promise<AiTicketOutcome[]> =>

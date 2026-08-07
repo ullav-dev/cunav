@@ -36,6 +36,7 @@ function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
     ai_outcome_feedback_at: null,
     ai_outcome_feedback_reason: null,
     ai_outcome_feedback_note_id: null,
+    duplicate_of_workflow_id: null,
     ...overrides,
   };
 }

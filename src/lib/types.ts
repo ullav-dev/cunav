@@ -149,6 +149,12 @@ export interface Workflow {
   ai_outcome_feedback_at: string | null;
   ai_outcome_feedback_reason: string | null;
   ai_outcome_feedback_note_id: string | null;
+  /** Set when this ticket is marked as a duplicate of another — at most one
+   *  target; any number of tickets may point at the same target. Never set
+   *  by flag_duplicate itself (which only suggests via an ai_ticket_outcomes
+   *  row's related_workflow_id) — only by a human confirming or picking a
+   *  link. See setTicketDuplicateOf/clearTicketDuplicateOf/listTicketDuplicates. */
+  duplicate_of_workflow_id: string | null;
 }
 
 export type AiOutcomeFeedback = "helpful" | "unhelpful";
