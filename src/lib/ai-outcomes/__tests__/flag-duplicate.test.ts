@@ -122,7 +122,10 @@ describe("flagDuplicate.run", () => {
         entity_type: "workflow",
         entity_id: ticket.id,
         title: "Possible duplicate flagged",
-        body: expect.stringContaining("#7"),
+        // A markdown link, not just the ticket id as plain text — NotesPanel
+        // renders note bodies through ReactMarkdown, so this becomes a real
+        // clickable link straight to the matched ticket.
+        body: expect.stringMatching(/\[#7 — "Login button broken on checkout page"\]\(.*\/tickets\/ticket-2\)/),
       })
     );
     expect(result.executed).toBe(true);

@@ -48,6 +48,21 @@ function overlapCoefficient(a: Set<string>, b: Set<string>): number {
  *  only shares a couple of common words in a small queue. */
 const MIN_MATCH_SCORE = 0.35;
 
+/** cunav's own base URL, for linking back to the matched ticket from the
+ *  note — same server-only-env-var pattern as TOGRA_URL/OBAIR_URL (see
+ *  AppUrlsContext), just pointed at this app instead of another one. Not
+ *  request-scoped (this runs from the triage webhook, with no browser
+ *  request to read an Origin/Host header from), so it has to be configured
+ *  rather than inferred. Locale is hardcoded to the default (`routing.
+ *  defaultLocale` — "en") for the same reason: no request to resolve a
+ *  locale from. next-intl's middleware will still route correctly for a
+ *  reader on a different locale, just via one redirect. */
+const CUNAV_APP_URL = process.env.CUNAV_APP_URL ?? "http://localhost:3008";
+
+function ticketUrl(ticketId: string): string {
+  return `${CUNAV_APP_URL}/en/tickets/${ticketId}`;
+}
+
 /** Flags a ticket that lexically resembles another ticket anywhere in the
  *  organization (regardless of queue, or that ticket's status — a match
  *  against a resolved ticket is still useful, since it may point straight at
@@ -107,13 +122,18 @@ export const flagDuplicate: AiOutcomeDefinition = {
 
     const label = best.candidate.ticket_number ? `#${best.candidate.ticket_number}` : best.candidate.id;
     const matchPct = Math.round(best.score * 100);
+    // Notes render as markdown (see NotesPanel's ReactMarkdown), so a real
+    // link — not just the ticket's display id as plain text — takes a
+    // reviewer straight to the matched ticket instead of leaving them to
+    // find it by hand.
+    const link = `[${label} — "${best.candidate.name}"](${ticketUrl(best.candidate.id)})`;
 
     const note = await createNote(token, {
       entity_type: "workflow",
       entity_id: ticket.id,
       title: AI_DUPLICATE_NOTE_TITLE,
       body:
-        `This ticket may duplicate ${label} — "${best.candidate.name}" (${matchPct}% word overlap). ` +
+        `This ticket may duplicate ${link} (${matchPct}% word overlap). ` +
         "Please review and merge or close if confirmed.",
       is_shared: true,
     });

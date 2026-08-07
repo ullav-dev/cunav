@@ -109,6 +109,11 @@ AUTH_URL=http://localhost:8081         # ullav-user-management
 TOGRA_URL=http://localhost:3007        # Togra app (for SSO cross-link)
 OBAIR_URL=http://localhost:3000        # Obair/AWE app
 DAM_BROWSER_URL=http://localhost:3004  # DAM browser
+CUNAV_APP_URL=http://localhost:3008    # cunav's own base URL — used server-side to build links back
+                                        # into itself (e.g. flag_duplicate's note links to the matched
+                                        # ticket). Not request-scoped (the triage webhook has no browser
+                                        # request to infer an origin from), so it must be configured
+                                        # rather than derived. Defaults to the local dev port.
 REPLY_TO_DOMAIN=                       # optional but recommended; when set, "Send as email" stamps
                                         # Reply-To: ticket-{number}@REPLY_TO_DOMAIN on every outbound
                                         # message (awe-runner's email script_type sets it via lettre).
