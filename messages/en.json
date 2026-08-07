@@ -124,6 +124,11 @@
       "updated": "Updated"
     }
   },
+  "notFoundPage": {
+    "title": "Page not found",
+    "message": "The page you're looking for doesn't exist or may have moved.",
+    "backHome": "Back to tickets"
+  },
   "ticket": {
     "loading": "Loading…",
     "notFound": "Ticket not found.",

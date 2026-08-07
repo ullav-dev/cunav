@@ -124,6 +124,11 @@
       "updated": "Aktualisiert"
     }
   },
+  "notFoundPage": {
+    "title": "Seite nicht gefunden",
+    "message": "Die gesuchte Seite existiert nicht oder wurde verschoben.",
+    "backHome": "Zurück zu den Tickets"
+  },
   "ticket": {
     "loading": "Laden…",
     "notFound": "Ticket nicht gefunden.",

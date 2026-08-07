@@ -68,8 +68,12 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
   );
 
   const [smtpConnections, setSmtpConnections] = useState<Connection[]>([]);
+  const [imapConnections, setImapConnections] = useState<Connection[]>([]);
   const [loadingConnections, setLoadingConnections] = useState(true);
   const [emailConnectionId, setEmailConnectionId] = useState(queue.email_connection_id ?? "");
+  const [inboundEmailConnectionId, setInboundEmailConnectionId] = useState(
+    queue.inbound_email_connection_id ?? ""
+  );
 
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingJobs, setLoadingJobs] = useState(false);
@@ -82,8 +86,11 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
   // team-scoped), so narrowing the picker here heads off that mismatch.
   useEffect(() => {
     listConnections(token, queue.team_id ? { team_id: queue.team_id } : undefined)
-      .then((conns) => setSmtpConnections(conns.filter((c) => c.connection_type === "smtp")))
-      .catch(() => setSmtpConnections([]))
+      .then((conns) => {
+        setSmtpConnections(conns.filter((c) => c.connection_type === "smtp"));
+        setImapConnections(conns.filter((c) => c.connection_type === "imap"));
+      })
+      .catch(() => { setSmtpConnections([]); setImapConnections([]); })
       .finally(() => setLoadingConnections(false));
   }, [token, queue.team_id]);
 
@@ -146,6 +153,7 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
         ai_route_confidence_threshold: confidence,
         ai_rules,
         email_connection_id: emailConnectionId || null,
+        inbound_email_connection_id: inboundEmailConnectionId || null,
       });
       onSaved(updated);
       onClose();
@@ -298,6 +306,21 @@ export default function AiQueueSettingsModal({ queue, token, onClose, onSaved }:
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-60">
               <option value="">{loadingConnections ? "Loading…" : "None (send-as-email disabled)"}</option>
               {smtpConnections.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+
+          <div className="pt-2 border-t border-slate-100">
+            <label className="block text-sm font-medium text-slate-700 mb-1">Inbound email connection</label>
+            <p className="text-xs text-slate-500 mb-2">
+              IMAP connection this queue treats as its support mailbox — outbound Reply-To
+              addresses are derived from it (e.g. support+TKT-0020@yourdomain.com), so replies
+              land wherever this mailbox is actually polled from. Manage connections and the
+              inbound poll schedule in Obair.
+            </p>
+            <select value={inboundEmailConnectionId} onChange={(e) => setInboundEmailConnectionId(e.target.value)} disabled={loadingConnections}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-60">
+              <option value="">{loadingConnections ? "Loading…" : "None (Reply-To disabled)"}</option>
+              {imapConnections.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
 

@@ -27,6 +27,7 @@ function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
     schedule_status: "N/A",
     job_id: null,
     team_id: null,
+    organization_id: null,
     is_shared: true,
     sort_order: null,
     story_points: null,
@@ -45,6 +46,7 @@ function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
     ai_outcome_feedback_at: null,
     ai_outcome_feedback_reason: null,
     ai_outcome_feedback_note_id: null,
+    duplicate_of_workflow_id: null,
     external_reporter_first_name: null,
     external_reporter_last_name: null,
     external_reporter_email: null,
@@ -59,6 +61,7 @@ function makeQueue(overrides: Partial<Queue> = {}): Queue {
     status: "Not Started",
     schedule_status: "N/A",
     team_id: null,
+    organization_id: null,
     project_id: null,
     job_type: "queue",
     created_at: "2026-01-01T00:00:00Z",
@@ -73,6 +76,7 @@ function makeQueue(overrides: Partial<Queue> = {}): Queue {
     ai_route_confidence_threshold: 0.7,
     ai_rules: [],
     email_connection_id: null,
+    inbound_email_connection_id: null,
     ...overrides,
   };
 }

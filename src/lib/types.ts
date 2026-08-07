@@ -65,6 +65,11 @@ export interface Job {
   status: Status;
   schedule_status: ScheduleStatus;
   team_id: string | null;
+  /** Denormalized alongside team_id — teams (and organizations) live in UUM
+   *  with no local FK. Lets org-wide queries (duplicate detection across
+   *  every queue in the organization, not just one team) skip a UUM
+   *  round-trip. See CLAUDE.md "Organizations (Multi-Tenancy)". */
+  organization_id: string | null;
   project_id: string | null;
   job_type: "sprint" | "kanban" | "backlog" | "queue" | null;
   created_at: string;
@@ -85,6 +90,12 @@ export interface Job {
   /** SMTP connection attached to the automated email task cunav creates when an
    *  agent sends a ticket note as email from this queue. */
   email_connection_id: string | null;
+  /** IMAP connection this queue treats as its own support mailbox — the
+   *  inbound counterpart to email_connection_id. The Reply-To address
+   *  send-email/route.ts stamps on outbound mail is derived from this
+   *  connection's own config.username at send time, not a deployment-wide
+   *  env var — see CLAUDE.md "Inbound Email". */
+  inbound_email_connection_id: string | null;
 }
 
 export interface Connection {
@@ -93,6 +104,12 @@ export interface Connection {
   description: string | null;
   connection_type: "bearer_token" | "oauth2_client_credentials" | "api_key_header" | "basic_auth" | "smtp" | "imap";
   team_id: string;
+  organization_id: string | null;
+  /** Never includes the secret value — host/port/username only. For an smtp
+   *  or imap connection, `config.username` is the mailbox's own address
+   *  (e.g. "support@ullav.com") — send-email/route.ts reads it off a
+   *  queue's inbound_email_connection_id to derive its Reply-To address. */
+  config: Record<string, string> | null;
   has_secret: boolean;
 }
 
@@ -116,6 +133,8 @@ export interface Workflow {
   schedule_status: ScheduleStatus;
   job_id: string | null;
   team_id: string | null;
+  /** See Job.organization_id — same denormalization, same reasoning. */
+  organization_id: string | null;
   is_shared: boolean;
   sort_order: number | null;
   story_points: number | null;
@@ -130,6 +149,12 @@ export interface Workflow {
   ai_outcome_feedback_at: string | null;
   ai_outcome_feedback_reason: string | null;
   ai_outcome_feedback_note_id: string | null;
+  /** Set when this ticket is marked as a duplicate of another — at most one
+   *  target; any number of tickets may point at the same target. Never set
+   *  by flag_duplicate itself (which only suggests via an ai_ticket_outcomes
+   *  row's related_workflow_id) — only by a human confirming or picking a
+   *  link. See setTicketDuplicateOf/clearTicketDuplicateOf/listTicketDuplicates. */
+  duplicate_of_workflow_id: string | null;
 }
 
 export type AiOutcomeFeedback = "helpful" | "unhelpful";

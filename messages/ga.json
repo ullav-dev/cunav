@@ -124,6 +124,11 @@
       "updated": "Nuashonraithe"
     }
   },
+  "notFoundPage": {
+    "title": "Leathanach gan aimsiú",
+    "message": "Níl an leathanach atá á lorg agat ann, nó b'fhéidir gur bogadh é.",
+    "backHome": "Ar ais go dtí na ticéid"
+  },
   "ticket": {
     "loading": "Ag luchtú…",
     "notFound": "Ticéad gan aimsiú.",

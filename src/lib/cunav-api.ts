@@ -40,11 +40,16 @@ export function filterCunavTickets(tickets: Ticket[], queues: Queue[]): Ticket[]
 
 export const listTickets = (
   token: string,
-  params?: { job_id?: string; team_id?: string }
+  params?: { job_id?: string; team_id?: string; organization_id?: string }
 ): Promise<Ticket[]> => {
   const qs = new URLSearchParams();
   if (params?.job_id) qs.set("job_id", params.job_id);
   else if (params?.team_id) qs.set("team_id", params.team_id);
+  // Every ticket across every team within the organization — e.g. duplicate
+  // detection scanning queues that belong to different teams but the same
+  // organization, instead of being confined to one team. See awe-server's
+  // GET /workflows organization_id param (065_organization_scoping.sql).
+  else if (params?.organization_id) qs.set("organization_id", params.organization_id);
   const query = qs.toString() ? `?${qs}` : "";
   return apiRequest(`/workflows${query}`, token);
 };
@@ -101,6 +106,26 @@ export const updateTicket = (token: string, id: string, patch: UpdateTicketPaylo
 export const deleteTicket = (token: string, id: string): Promise<void> =>
   apiRequest(`/workflows/${id}`, token, { method: "DELETE" });
 
+// ── Duplicate ticket linking ─────────────────────────────────────────────────
+// A ticket can be marked "a duplicate of" at most one other ticket; any number
+// of tickets may point at the same target. flag_duplicate never sets this
+// itself — it only suggests via an ai_ticket_outcomes row's
+// related_workflow_id (see listTicketOutcomes above); these three calls are
+// what actually create/remove/read the confirmed link.
+
+export const setTicketDuplicateOf = (token: string, id: string, duplicateOfWorkflowId: string): Promise<Ticket> =>
+  apiRequest(`/workflows/${id}/duplicate-of`, token, {
+    method: "PUT",
+    body: JSON.stringify({ duplicate_of_workflow_id: duplicateOfWorkflowId }),
+  });
+
+export const clearTicketDuplicateOf = (token: string, id: string): Promise<Ticket> =>
+  apiRequest(`/workflows/${id}/duplicate-of`, token, { method: "DELETE" });
+
+/** Every ticket marked as a duplicate of this one (reverse lookup). */
+export const listTicketDuplicates = (token: string, id: string): Promise<Ticket[]> =>
+  apiRequest(`/workflows/${id}/duplicates`, token);
+
 // ── AI ticket outcomes ─────────────────────────────────────────────────────
 
 export const listTicketOutcomes = (token: string, ticketId: string): Promise<AiTicketOutcome[]> =>
@@ -138,9 +163,15 @@ export const updateTicketOutcomeFeedback = (
 
 // ── Queues (jobs with job_type = "queue") ─────────────────────────────────────
 
-export const listQueues = async (token: string, params?: { team_id?: string }): Promise<Queue[]> => {
+export const listQueues = async (
+  token: string,
+  params?: { team_id?: string; organization_id?: string }
+): Promise<Queue[]> => {
   const qs = new URLSearchParams();
   if (params?.team_id) qs.set("team_id", params.team_id);
+  // Every queue across every team within the organization, not just one team
+  // — see awe-server's GET /jobs organization_id param (065_organization_scoping.sql).
+  else if (params?.organization_id) qs.set("organization_id", params.organization_id);
   const jobs = await apiRequest<Job[]>(`/jobs?${qs}`, token);
   return jobs.filter((j): j is Queue => j.job_type === "queue");
 };
@@ -164,6 +195,7 @@ export interface UpdateQueuePayload {
   ai_route_confidence_threshold?: number;
   ai_rules?: AiOutcomeRuleConfig[];
   email_connection_id?: string | null;
+  inbound_email_connection_id?: string | null;
 }
 
 export const updateQueue = (

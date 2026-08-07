@@ -43,7 +43,12 @@ function CreateQueueModal({ token, onClose, onCreated }: CreateQueueModalProps) 
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getSupportTeam(token)
+    // Optional: cunav is single-tenant per deployment today (no per-request
+    // org context to derive this from), so the deployment's own organization
+    // is a build-time constant, not something resolved per user/request. See
+    // CLAUDE.md "Organizations" — omitted, GET /teams/support still resolves
+    // unambiguously as long as only one organization has a Support team.
+    getSupportTeam(token, process.env.NEXT_PUBLIC_CUNAV_ORGANIZATION_ID)
       .then((team) => setSupportTeamId(team?.id ?? null))
       .catch(() => setSupportTeamId(null))
       .finally(() => setResolving(false));

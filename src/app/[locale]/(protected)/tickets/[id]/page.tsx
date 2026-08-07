@@ -22,6 +22,7 @@ import NotesPanel from "@/components/notes/NotesPanel";
 import WikipediaExplorer from "@/components/WikipediaExplorer";
 import AiChatExplorer from "@/components/AiChatExplorer";
 import SendToTograModal from "@/components/SendToTograModal";
+import DuplicateLinkPanel from "@/components/DuplicateLinkPanel";
 import FeedbackReasonModal from "@/components/FeedbackReasonModal";
 import { useAppUrls } from "@/contexts/AppUrlsContext";
 import { useResize } from "@/hooks/useResize";
@@ -125,6 +126,14 @@ export default function TicketDetailPage() {
     if (editingTitle && titleRef.current) titleRef.current.focus();
   }, [editingTitle]);
 
+  // Whether this ticket's reporter is a customer with no UUM account
+  // (external_reporter_*) rather than a real internal user (reporter_id) —
+  // previously implicit (readers had to infer it from which fields were
+  // populated); surfaced as an explicit label next to the reporter field.
+  function isExternalReporter(tk: Ticket): boolean {
+    return !!(tk.external_reporter_first_name || tk.external_reporter_last_name || tk.external_reporter_email);
+  }
+
   function reporterDisplay(tk: Ticket): string {
     const externalName = [tk.external_reporter_first_name, tk.external_reporter_last_name].filter(Boolean).join(" ");
     if (externalName) return tk.external_reporter_email ? `${externalName} (${tk.external_reporter_email})` : externalName;
@@ -189,7 +198,12 @@ export default function TicketDetailPage() {
   }
 
   function renderSendEmailAction(note: Note) {
-    if (!ticket?.external_reporter_email || !note.body) return null;
+    // A reporter to send to: the explicit external one, or — since every
+    // internal reporter has a real email too — a resolved internal user.
+    // reporter_id defaults to the ticket's creator when unset (see
+    // create_workflow in awe-server), so this is now available on nearly
+    // every ticket, not just ones with an explicit external reporter.
+    if ((!ticket?.external_reporter_email && !ticket?.reporter_id) || !note.body) return null;
     const state = emailSendState[note.id];
     const busy = state?.phase === "sending" || state?.phase === "polling";
     return (
@@ -221,7 +235,7 @@ export default function TicketDetailPage() {
           onClick={() => handleSendAsEmail(note)}
           disabled={busy}
           className="p-1.5 text-slate-400 hover:text-violet-700 disabled:opacity-40 transition-colors rounded"
-          title={`Send as email to ${ticket.external_reporter_email}`}
+          title={ticket.external_reporter_email ? `Send as email to ${ticket.external_reporter_email}` : "Send as email to reporter"}
         >
           {busy ? (
             <div className="w-3.5 h-3.5 border-2 border-violet-200 border-t-violet-600 rounded-full animate-spin" />
@@ -244,7 +258,11 @@ export default function TicketDetailPage() {
 
   async function handleSendAsEmail(note: Note) {
     if (!token || !ticket) return;
-    const reporterEmail = ticket.external_reporter_email;
+    // The route resolves the actual recipient server-side (external_reporter_email,
+    // or an internal reporter's own email via UUM) and echoes it back — declared
+    // here (not just inside `try`) so the catch block's failure note can still
+    // reference it if the send failed after resolution succeeded.
+    let reporterEmail: string | undefined;
     setEmailSendState((prev) => ({ ...prev, [note.id]: { phase: "sending" } }));
     try {
       const res = await fetch(`/api/tickets/${ticket.id}/send-email`, {
@@ -254,6 +272,7 @@ export default function TicketDetailPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      reporterEmail = data.recipient_email;
 
       setEmailSendState((prev) => ({ ...prev, [note.id]: { phase: "polling" } }));
       // Instantiating the work item only enqueues it for awe-runner to pick
@@ -477,6 +496,13 @@ export default function TicketDetailPage() {
                 <div>
                   <dt className="text-xs text-slate-400 font-medium mb-0.5">{t("reporter")}</dt>
                   <dd className="text-slate-700 flex items-center gap-1.5 group">
+                    <span
+                      className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                        isExternalReporter(ticket) ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {isExternalReporter(ticket) ? "External" : "Internal"}
+                    </span>
                     <span>{reporterDisplay(ticket)}</span>
                     <button type="button" onClick={startEditingReporter} title="Edit reporter"
                       className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-violet-600 transition-opacity">
@@ -552,6 +578,8 @@ export default function TicketDetailPage() {
                   </div>
                 )}
               </dl>
+
+              <DuplicateLinkPanel ticket={ticket} onTicketUpdated={setTicket} />
 
               {/* Description */}
               <div>

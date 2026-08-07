@@ -22,6 +22,7 @@ function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
     schedule_status: "N/A",
     job_id: "job-1",
     team_id: null,
+    organization_id: null,
     is_shared: true,
     sort_order: null,
     story_points: null,
@@ -40,6 +41,7 @@ function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
     ai_outcome_feedback_at: null,
     ai_outcome_feedback_reason: null,
     ai_outcome_feedback_note_id: null,
+    duplicate_of_workflow_id: null,
     external_reporter_first_name: null,
     external_reporter_last_name: null,
     external_reporter_email: null,
@@ -75,7 +77,7 @@ describe("flagDuplicate.run", () => {
     expect(mockCreateNote).not.toHaveBeenCalled();
   });
 
-  it("does not execute when no candidate clears the minimum overlap score", async () => {
+  it("does not execute when no candidate clears the minimum overlap score, but still reports its real score", async () => {
     mockListTickets.mockResolvedValue([
       makeTicket(),
       makeTicket({ id: "ticket-2", name: "Completely unrelated request", description: "Please add dark mode" }),
@@ -86,7 +88,11 @@ describe("flagDuplicate.run", () => {
       queue: {} as never,
       confidence: 0.8,
     });
-    expect(result).toEqual({ executed: false });
+    // executed: false, but confidence is still the real overlap score (not
+    // omitted/zeroed) — this outcome type never asks the LLM to guess, so its
+    // own score, even a low one, is the only confidence there is to persist.
+    expect(result.executed).toBe(false);
+    expect(result.confidence).toBeLessThan(0.35);
     expect(mockCreateNote).not.toHaveBeenCalled();
   });
 
@@ -117,11 +123,26 @@ describe("flagDuplicate.run", () => {
         entity_type: "workflow",
         entity_id: ticket.id,
         title: "Possible duplicate flagged",
-        body: expect.stringContaining("#7"),
+        // A markdown link, not just the ticket id as plain text — NotesPanel
+        // renders note bodies through ReactMarkdown, so this becomes a real
+        // clickable link straight to the matched ticket.
+        body: expect.stringMatching(/\[#7 — "Login button broken on checkout page"\]\(.*\/tickets\/ticket-2\)/),
       })
     );
     expect(result.executed).toBe(true);
     expect(result.relatedWorkflowId).toBe("ticket-2");
     expect(result.noteId).toBe("note-1");
+    expect(result.confidence).toBeGreaterThanOrEqual(0.35);
+  });
+
+  it("searches organization-wide when the ticket has an organization_id, not just its own queue", async () => {
+    mockListTickets.mockResolvedValue([makeTicket({ id: "ticket-2" })]);
+    await flagDuplicate.run({
+      token: "tok",
+      ticket: makeTicket({ organization_id: "org-1" }),
+      queue: {} as never,
+      confidence: 0.8,
+    });
+    expect(mockListTickets).toHaveBeenCalledWith("tok", { organization_id: "org-1" });
   });
 });

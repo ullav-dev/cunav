@@ -66,7 +66,10 @@ export default function SettingsPage() {
           ollamaUrl: provider === "ollama" ? ollamaUrl : undefined,
         }),
       });
-      if (!res.ok) throw new Error(t("saveFailed"));
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || t("saveFailed"));
+      }
       if (apiKey) setHasKey(true);
       setApiKey("");
       setSaveStatus("saved");
