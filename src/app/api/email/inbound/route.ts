@@ -11,6 +11,7 @@ import { createTicket } from "@/lib/cunav-api";
 import { INBOUND_EMAIL_NOTE_TITLE } from "@/lib/types";
 
 const API_URL = process.env.API_URL ?? "http://localhost:8085";
+const AUTH_URL = process.env.AUTH_URL ?? "http://localhost:8081";
 // Queue a brand-new ticket lands in when an inbound email can't be resolved
 // to an existing one. Required for the "create ticket" path; the "reply on
 // an existing ticket" path works without it.
@@ -77,7 +78,7 @@ function ticketNumberFromSubject(subject: string): string | null {
 async function resolveTicket(
   token: string,
   candidate: string
-): Promise<{ id: string; external_reporter_email: string | null } | null> {
+): Promise<{ id: string; external_reporter_email: string | null; reporter_id: string | null } | null> {
   const res = await aweFetch(`/references/resolve?ref=${encodeURIComponent(candidate)}`, token);
   if (!res.ok) return null;
   const resolved = await res.json();
@@ -85,7 +86,33 @@ async function resolveTicket(
   const ticketRes = await aweFetch(`/workflows/${resolved.id}`, token);
   if (!ticketRes.ok) return null;
   const ticket = await ticketRes.json();
-  return { id: resolved.id, external_reporter_email: ticket.external_reporter_email ?? null };
+  return {
+    id: resolved.id,
+    external_reporter_email: ticket.external_reporter_email ?? null,
+    reporter_id: ticket.reporter_id ?? null,
+  };
+}
+
+/** The email a reply must come from to be attached to this ticket —
+ *  external_reporter_email if set, otherwise the internal reporter's own
+ *  email resolved via UUM (see send-email/route.ts's resolveRecipientEmail,
+ *  same fallback). Keeping these two in sync matters: a ticket now sent to
+ *  its internal reporter (no external_reporter_email at all) would
+ *  otherwise never pass verification here — checking only
+ *  external_reporter_email silently rejected every reply from an internal
+ *  reporter and fell through to filing a spurious new ticket instead. */
+async function resolveExpectedSenderEmail(
+  token: string,
+  ticket: { external_reporter_email: string | null; reporter_id: string | null }
+): Promise<string | null> {
+  if (ticket.external_reporter_email) return ticket.external_reporter_email;
+  if (!ticket.reporter_id) return null;
+  const res = await fetch(`${AUTH_URL}/users/${ticket.reporter_id}/email`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+  const data: { email: string } = await res.json();
+  return data.email || null;
 }
 
 export async function POST(req: NextRequest) {
@@ -114,14 +141,16 @@ export async function POST(req: NextRequest) {
   // reply chains that only preserve the subject.
   const candidate = ticketRefFromReplyTo(to_emails) ?? ticketNumberFromSubject(subject);
   const resolved = candidate ? await resolveTicket(token, candidate) : null;
+  const expectedSenderEmail = resolved ? await resolveExpectedSenderEmail(token, resolved) : null;
 
-  // Require the sender to actually be this ticket's own reporter before
-  // attaching their message to it — a forwarded or misquoted subject tag
-  // must not let one customer's reply land on another customer's ticket.
-  // A mismatch (or a ticket with no reporter email on file) falls through
-  // to filing a new ticket instead of silently dropping the message.
+  // Require the sender to actually be this ticket's own reporter (external
+  // or internal — see resolveExpectedSenderEmail) before attaching their
+  // message to it — a forwarded or misquoted subject tag must not let one
+  // customer's reply land on another customer's ticket. A mismatch (or a
+  // ticket with no reporter email resolvable at all) falls through to
+  // filing a new ticket instead of silently dropping the message.
   const ticketId =
-    resolved && resolved.external_reporter_email?.toLowerCase() === from_email.toLowerCase()
+    resolved && expectedSenderEmail?.toLowerCase() === from_email.toLowerCase()
       ? resolved.id
       : null;
 
