@@ -132,13 +132,20 @@ missing value on either side is a silent no-op or a 500, not a helpful error.
 **awe-server:**
 - `smtp` and `imap` connection types (migrations `061_smtp_connection_and_email_work_item.sql`,
   `062_imap_connection.sql`) plus `jobs.email_connection_id` (per-queue outbound `smtp`
-  connection, configured in cunav's `AiQueueSettingsModal`)
+  connection) and `jobs.inbound_email_connection_id` (per-queue inbound `imap` connection,
+  migration `066_inbound_email_connection_on_jobs.sql`) — both configured in cunav's
+  `AiQueueSettingsModal`, under "Outbound email connection" and "Inbound email connection"
+  respectively. **There is no deployment-wide mail domain to configure anywhere** — each queue
+  points at its own connections, the same way it already points at its own AI-triage Togra
+  destination.
 - The `email` script_type (migration `063_email_script_type.sql`) — the runner sends directly
   via SMTP (lettre), no work item or script body to build; cunav creates the automated task
-  itself per send and attaches the queue's connection to it (`PUT /tasks/{id}/script`)
-- For inbound: a `scheduled_scripts` row (script_type `python`, an `imap` connection attached,
-  e.g. `*/2 * * * *`) using `docs/work-items/imap_poll.py` as the script body — build it in Obair's
-  Schedules UI
+  itself per send and attaches the queue's outbound connection to it (`PUT /tasks/{id}/script`)
+- For inbound: a `scheduled_scripts` row (script_type `python`, the **same** `imap` connection a
+  queue nominates as `inbound_email_connection_id` attached, e.g. `*/2 * * * *`) using
+  `docs/work-items/imap_poll.py` as the script body — build it in Obair's Schedules UI. One
+  connection, used both ways: the schedule polls it, cunav reads its `config.username` to build
+  Reply-To addresses.
 - `CUNAV_EMAIL_WEBHOOK_URL` / `CUNAV_EMAIL_WEBHOOK_SECRET` env vars on **awe-server** (inherited by
   awe-runner's script subprocess, not stored on the connection) — see its `.env.example`
 
@@ -146,52 +153,42 @@ missing value on either side is a silent no-op or a 500, not a helpful error.
 
 | Variable | Required | Description |
 |---|---|---|
-| `REPLY_TO_DOMAIN` | no, but recommended | When set, every "Send as email" sets `Reply-To: ticket-{number}@REPLY_TO_DOMAIN` (via `run_email` in awe-runner). Without it — or if that domain isn't actually receiving mail — inbound resolution falls back to the `[TKT-0009]`-style tag stamped on every subject, which still works but is one accidental subject edit away from breaking. See "Getting replies working end-to-end" below before setting this in anything but local testing |
 | `CUNAV_EMAIL_WEBHOOK_SECRET` | yes (for inbound) | Must match awe-server/awe-runner's `CUNAV_EMAIL_WEBHOOK_SECRET`; authenticates `POST /api/email/inbound` |
 | `CUNAV_INBOUND_EMAIL_QUEUE_ID` | yes (for inbound) | Queue a new ticket lands in when an inbound email can't be resolved to an existing ticket |
 | `CUNAV_AI_SERVICE_EMAIL` / `CUNAV_AI_SERVICE_PASSWORD` | yes (for inbound) | Reused from AI Enabled Queues above — the inbound webhook has no signed-in user either, so it logs in as the same service account |
 
 A resolved reply is only ever attached to a ticket if the sender's address matches that ticket's
-`external_reporter_email` — a forwarded or copied `[#N]` tag can't attach one customer's reply to
-another customer's ticket; on a mismatch (or no match at all) the message files as a new ticket
-instead of being dropped.
+`external_reporter_email` — a forwarded or copied `[TKT-0009]` tag can't attach one customer's
+reply to another customer's ticket; on a mismatch (or no match at all) the message files as a new
+ticket instead of being dropped.
 
 ### Getting replies working end-to-end
 
-Sending mail and receiving replies use *two different mailboxes* by design: outbound goes out
-through the queue's `smtp` connection's own account (`From` always stays that authenticated
-identity — see below for why), while inbound is whatever mailbox the `imap` connection/scheduled
-script polls. Reply-To is what bridges them: it points a reply at a per-ticket address
-(`ticket-{number}@REPLY_TO_DOMAIN`) that has to land in that same inbound mailbox. None of this
-is automatic — you own the mail routing. Steps, in order:
+Reply-To is what bridges outbound and inbound: it points a reply at a per-ticket address that has
+to land back in the mailbox the queue's inbound connection polls. Unlike an env-var-based scheme,
+this is now entirely queue config — no domain to provision, no code to change per deployment.
+Steps, in order:
 
-1. **Pick a domain (or subdomain) you control for `REPLY_TO_DOMAIN`**, e.g. `support.yourcompany.com`.
-   It does not need to be the same domain the outbound `smtp` connection sends *from* — only that
-   mail addressed to `ticket-*@` that domain reaches the inbox in step 3.
-2. **Decide how `ticket-{number}@REPLY_TO_DOMAIN` reaches one mailbox.** Two common ways, both
-   provider-side, not cunav config:
-   - **Catch-all address**: point `*@REPLY_TO_DOMAIN` (or `*@support.yourcompany.com`) at a single
-     mailbox. Simplest; means *anything* sent to that domain lands there, so use a subdomain
-     dedicated to this rather than your main mail domain.
-   - **Plus-addressing on an existing mailbox**: if your provider supports it (Gmail, most modern
-     mail servers do), you could instead use `support+ticket-{number}@yourcompany.com` as the
-     Reply-To shape and skip a dedicated domain — but that's not what this code generates today
-     (`ticket-{number}@REPLY_TO_DOMAIN`, no plus sign), so pick the catch-all route unless you also
-     change `send-email/route.ts`'s `replyTo` template and the inbound
-     `ticketNumberFromReplyTo` regex to match.
-   Either way, the destination is **the exact mailbox the `imap` connection in step 3 polls** —
-   a catch-all that forwards elsewhere does nothing for you here.
-3. **Create the `imap` connection in Obair** pointed at that mailbox (host/port/username, mailbox
-   password as the connection secret), and attach it to a `scheduled_scripts` row (script_type
-   `python`, `docs/work-items/imap_poll.py` from awe-server, cron e.g. `*/2 * * * *`) — see
-   "Inbound" bullets above.
-4. **Set `REPLY_TO_DOMAIN` in cunav** to the domain from step 1, and confirm `CUNAV_EMAIL_WEBHOOK_SECRET`
-   (matching awe-runner's), `CUNAV_INBOUND_EMAIL_QUEUE_ID`, and `CUNAV_AI_SERVICE_EMAIL`/`_PASSWORD`
-   are all set (see table above).
+1. **Create an `imap` connection in Obair** pointed at your support mailbox (host/port/username —
+   `username` must be the mailbox's real address, e.g. `support@yourcompany.com`, since that's
+   what gets plus-addressed — mailbox password as the connection secret).
+2. **Confirm your mail provider supports plus-addressing** (`local+anything@domain` delivered to
+   `local@domain`) on that mailbox — most modern providers do (Gmail, Migadu, Fastmail, and most
+   self-hosted IMAP servers). If yours doesn't, Reply-To silently won't help; subject-tag
+   resolution (step 5 below) still works without it, just less robustly.
+3. **Attach that same connection** to a `scheduled_scripts` row (script_type `python`,
+   `docs/work-items/imap_poll.py` from awe-server, cron e.g. `*/2 * * * *`) — see "Inbound"
+   bullets above.
+4. **In cunav's Queue settings** (`AiQueueSettingsModal`), set "Inbound email connection" to that
+   same connection. This is what makes `send-email/route.ts` derive Reply-To at all — a queue with
+   no inbound connection configured sends mail with no Reply-To (subject-tag resolution only).
+   Also confirm `CUNAV_EMAIL_WEBHOOK_SECRET` (matching awe-runner's), `CUNAV_INBOUND_EMAIL_QUEUE_ID`,
+   and `CUNAV_AI_SERVICE_EMAIL`/`_PASSWORD` are set (see table above).
 5. **Send a test email** from a ticket ("Send as email" on a note) and inspect the raw headers of
-   what arrives in the reporter's inbox — confirm `Reply-To: ticket-{N}@REPLY_TO_DOMAIN` is present
-   and `From` is the connection's own account (that's correct, not a bug — see "why `From` isn't
-   per-ticket" below).
+   what arrives in the reporter's inbox — confirm `Reply-To: support+TKT-0020@yourcompany.com` (or
+   your mailbox's own address, plus-addressed with the ticket's display id) is present, and `From`
+   is the *outbound* connection's own account (that's correct, not a bug — see "why `From` isn't
+   per-ticket" below; it doesn't have to be the same connection as inbound, though it commonly is).
 6. **Reply to that test email** from the reporter's side and confirm it shows up as a note on the
    ticket within one scheduler tick (or trigger it immediately: `POST /scheduled-scripts/{id}/trigger`).
 
@@ -219,9 +216,21 @@ install/setup; they're already running if you used `scripts/start-all.sh`.
   mailbox requires. Port `3143` is plain IMAP (no TLS); `imap_poll.py` only uses `IMAP4_SSL` on
   port `993`, so a plain test port works with no extra config.
 
-GreenMail's single `tester` mailbox accepts mail addressed to *any* recipient — it has no real
-catch-all/DNS setup to configure, so it's the easy way to test the Reply-To mechanism itself
-(steps 1–3 of "Getting replies working end-to-end" above) without owning a real domain.
+GreenMail's single `tester` mailbox accepts mail addressed to *any* recipient, so it's still the
+easy way to exercise new-ticket-creation and subject-tag resolution without owning a real domain —
+**but its login only accepts the bare `tester` username, not a full `tester@domain` address**
+(the quirk noted above), which conflicts with `replyToFromMailbox()`'s requirement that a
+connection's `config.username` actually be a full mailbox address to plus-address. In practice:
+setting `username` to `tester@yourdomain.test` so Reply-To has something to build from breaks the
+poll script's own IMAP login against GreenMail, and setting it to bare `tester` (so login works)
+means Reply-To derivation finds no `@` and comes back `null` — no Reply-To gets set at all.
+
+So locally, with GreenMail: keep `username: tester` (bare) so the poll script logs in
+successfully, accept that outbound mail won't carry a Reply-To header in this setup, and exercise
+that path by tagging the subject with `[TKT-0009]` (or legacy `[#N]`) instead — the fallback
+resolution path. **To actually test Reply-To derivation itself**, point the inbound connection at
+a real mailbox that accepts full-address IMAP login (Migadu, Gmail, most non-GreenMail providers)
+rather than trying to force it through GreenMail.
 
 Setup, once both are running:
 1. In Obair, create an `smtp` connection pointed at Mailpit (`host: localhost`, `port: 1025`, any
@@ -229,20 +238,17 @@ Setup, once both are running:
    test with (connections are team-scoped; a cross-team connection fails at send time).
 2. Create an `imap` connection pointed at GreenMail (`host: localhost`, `port: 3143`, `username:
    tester`, secret `testerpass`) and attach it to the inbound scheduled script.
-3. In cunav's Queue settings, set "Outbound email connection" to the Mailpit connection; set
-   `CUNAV_INBOUND_EMAIL_QUEUE_ID` to a real queue's id, and `REPLY_TO_DOMAIN` to anything
-   (e.g. `yourdomain.test`) — GreenMail doesn't care what the address is, so any value exercises
-   the Reply-To code path end to end.
+3. In cunav's Queue settings, set "Outbound email connection" to the Mailpit connection; leave
+   "Inbound email connection" unset (see above — GreenMail can't cleanly exercise Reply-To). Set
+   `CUNAV_INBOUND_EMAIL_QUEUE_ID` to a real queue's id.
 4. Set a ticket's external reporter email, click the mail icon on a note, then check
-   `http://localhost:8025` for the delivered message — open it and confirm the `Reply-To` header
-   reads `ticket-{N}@yourdomain.test` and `From` is whatever the Mailpit connection's `username`
-   was set to.
-5. Reply from Mailpit's UI (or send fresh via `smtplib.SMTP("localhost", 3025)`, `To:
-   tester@yourdomain.test`) into GreenMail to simulate the reporter's reply — a real Reply-To
-   header does this automatically once step 4 confirms it's present; without one, tag the subject
-   with `[TKT-0009]` (or legacy `[#N]`) to exercise the fallback path instead, or leave both out to
-   test new-ticket creation. Either wait for the schedule's own cron tick or trigger it
-   immediately: `POST /scheduled-scripts/{id}/trigger`.
+   `http://localhost:8025` for the delivered message — confirm it arrived with no `Reply-To`
+   header (expected, per above) and `From` is whatever the Mailpit connection's `username` was set to.
+5. Send a fresh message into GreenMail tagging the subject with `[TKT-0009]` (matching a real
+   ticket's display id) via `smtplib.SMTP("localhost", 3025)`, `To: tester@yourdomain.test`, to
+   exercise subject-tag resolution — or omit the tag entirely to test new-ticket creation instead.
+   Either wait for the schedule's own cron tick or trigger it immediately:
+   `POST /scheduled-scripts/{id}/trigger`.
 
 The schedule fires on its cron tick regardless of whether GreenMail (or a real mailbox) is up —
 pause it when you're not actively testing (`PUT /scheduled-scripts/{id}` with `{"is_active":

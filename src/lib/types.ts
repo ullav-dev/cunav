@@ -90,6 +90,12 @@ export interface Job {
   /** SMTP connection attached to the automated email task cunav creates when an
    *  agent sends a ticket note as email from this queue. */
   email_connection_id: string | null;
+  /** IMAP connection this queue treats as its own support mailbox — the
+   *  inbound counterpart to email_connection_id. The Reply-To address
+   *  send-email/route.ts stamps on outbound mail is derived from this
+   *  connection's own config.username at send time, not a deployment-wide
+   *  env var — see CLAUDE.md "Inbound Email". */
+  inbound_email_connection_id: string | null;
 }
 
 export interface Connection {
@@ -98,6 +104,12 @@ export interface Connection {
   description: string | null;
   connection_type: "bearer_token" | "oauth2_client_credentials" | "api_key_header" | "basic_auth" | "smtp" | "imap";
   team_id: string;
+  organization_id: string | null;
+  /** Never includes the secret value — host/port/username only. For an smtp
+   *  or imap connection, `config.username` is the mailbox's own address
+   *  (e.g. "support@ullav.com") — send-email/route.ts reads it off a
+   *  queue's inbound_email_connection_id to derive its Reply-To address. */
+  config: Record<string, string> | null;
   has_secret: boolean;
 }
 

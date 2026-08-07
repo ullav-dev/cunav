@@ -2,11 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { ticketId as formatTicketId } from "@/lib/ticket-id";
 
 const API_URL = process.env.API_URL ?? "http://localhost:8085";
-// See README "Outbound & Inbound Email" / CLAUDE.md "Outbound Email" for the
-// full setup: this domain needs a catch-all (or plus-addressing) mailbox that
-// funnels every ticket-{number}@REPLY_TO_DOMAIN address into the mailbox the
-// inbound IMAP poll watches.
-const REPLY_TO_DOMAIN = process.env.REPLY_TO_DOMAIN;
 
 interface TicketRow {
   job_id: string | null;
@@ -16,10 +11,34 @@ interface TicketRow {
 
 interface JobRow {
   email_connection_id: string | null;
+  inbound_email_connection_id: string | null;
+}
+
+interface ConnectionRow {
+  config: Record<string, string> | null;
 }
 
 interface TaskRow {
   id: string;
+}
+
+/** Derives a per-ticket Reply-To address from the queue's own inbound IMAP
+ *  connection — not a deployment-wide env var. Plus-addressing
+ *  (`local+TAG@domain`) off that connection's own mailbox (config.username)
+ *  means the reply lands in exactly the mailbox this queue is already
+ *  configured to poll, with no separate catch-all domain/DNS to set up —
+ *  see AiQueueSettingsModal's "Inbound email connection" section and
+ *  CLAUDE.md "Inbound Email". Returns null if the connection isn't imap, has
+ *  no username configured, or the username isn't a plain address — any of
+ *  which means Reply-To can't be built, not something to guess at. */
+function replyToFromMailbox(config: Record<string, string> | null, ticketNumber: number): string | null {
+  const mailbox = config?.username;
+  if (!mailbox) return null;
+  const at = mailbox.indexOf("@");
+  if (at <= 0) return null;
+  const local = mailbox.slice(0, at);
+  const domain = mailbox.slice(at + 1);
+  return `${local}+${formatTicketId(ticketNumber)}@${domain}`;
 }
 
 async function aweFetch(path: string, authHeader: string, init?: RequestInit) {
@@ -113,14 +132,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // which also still accepts the legacy bare "[#N]" form for older chains.
   const taggedSubject = ticket.ticket_number ? `${subject} [${formatTicketId(ticket.ticket_number)}]` : subject;
 
-  // Reply-To is the primary resolution path when REPLY_TO_DOMAIN is
-  // configured — `from` deliberately stays the connection's own account (see
-  // run_email's comment in awe-server: an unaligned From gets rejected or
-  // rewritten by most providers), but Reply-To can be anything, so a
-  // per-ticket address goes here instead. `ticketNumberFromReplyTo` in the
-  // inbound webhook expects exactly this `ticket-{number}@` shape.
-  const replyTo =
-    REPLY_TO_DOMAIN && ticket.ticket_number ? `ticket-${ticket.ticket_number}@${REPLY_TO_DOMAIN}` : null;
+  // Reply-To is the primary resolution path when the queue has an inbound
+  // connection configured — `from` deliberately stays the outbound
+  // connection's own account (see run_email's comment in awe-server: an
+  // unaligned From gets rejected or rewritten by most providers), but
+  // Reply-To can be anything, so a per-ticket address goes here instead,
+  // derived from the queue's own inbound mailbox rather than a
+  // deployment-wide domain.
+  let replyTo: string | null = null;
+  if (job.inbound_email_connection_id && ticket.ticket_number) {
+    const inboundConnRes = await aweFetch(`/connections/${job.inbound_email_connection_id}`, authHeader);
+    if (inboundConnRes.ok) {
+      const inboundConn: ConnectionRow = await inboundConnRes.json();
+      replyTo = replyToFromMailbox(inboundConn.config, ticket.ticket_number);
+    }
+    // A configured-but-unresolvable inbound connection isn't fatal to the
+    // send itself (unlike the outbound connection check above) — the email
+    // still goes out, just without Reply-To, same as if none were configured.
+  }
 
   const inputsRes = await aweFetch(`/tasks/${task.id}/inputs`, authHeader, {
     method: "PATCH",

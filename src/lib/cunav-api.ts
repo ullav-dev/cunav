@@ -175,6 +175,7 @@ export interface UpdateQueuePayload {
   ai_route_confidence_threshold?: number;
   ai_rules?: AiOutcomeRuleConfig[];
   email_connection_id?: string | null;
+  inbound_email_connection_id?: string | null;
 }
 
 export const updateQueue = (

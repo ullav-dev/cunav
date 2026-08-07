@@ -114,15 +114,6 @@ CUNAV_APP_URL=http://localhost:3008    # cunav's own base URL — used server-si
                                         # ticket). Not request-scoped (the triage webhook has no browser
                                         # request to infer an origin from), so it must be configured
                                         # rather than derived. Defaults to the local dev port.
-REPLY_TO_DOMAIN=                       # optional but recommended; when set, "Send as email" stamps
-                                        # Reply-To: ticket-{number}@REPLY_TO_DOMAIN on every outbound
-                                        # message (awe-runner's email script_type sets it via lettre).
-                                        # Requires a mailbox that actually receives mail sent to that
-                                        # address — see README "Outbound & Inbound Email" for the
-                                        # catch-all/plus-addressing setup this needs. Unset, or mail
-                                        # to that address undeliverable: the inbound poll falls back to
-                                        # the `[TKT-0009]`-style subject tag (legacy bare `[#{number}]`
-                                        # tags still resolve too).
 CUNAV_EMAIL_WEBHOOK_SECRET=            # must match awe-runner's env var of the same name;
                                         # authenticates the inbound-email poll's webhook call
 CUNAV_INBOUND_EMAIL_QUEUE_ID=          # queue a new ticket lands in when an inbound email
@@ -236,12 +227,17 @@ raw SMTP mail:
 4. `From` is deliberately always the outbound connection's own authenticated account —
    most SMTP providers reject or silently rewrite a `From` that isn't the authenticated
    identity or an approved alias (SPF/DKIM alignment), so there's no per-ticket "from"
-   address. `Reply-To` is where a per-ticket address belongs instead: when
-   `REPLY_TO_DOMAIN` is configured, this route sets `reply_to` to
-   `ticket-{number}@REPLY_TO_DOMAIN` on the email task's inputs; `run_email` in
-   awe-runner (`awe-server/src/bin/awe_runner.rs`) reads that same `reply_to` input
-   and sets the message's Reply-To header via lettre. See Inbound Email below for what
-   has to receive mail sent to that address.
+   address. `Reply-To` is where a per-ticket address belongs instead — derived from the
+   queue's own **inbound** connection (`jobs.inbound_email_connection_id`, an `imap`
+   connection, set via `AiQueueSettingsModal`'s "Inbound email connection" section), not
+   a deployment-wide env var: `replyToFromMailbox()` in `send-email/route.ts` reads that
+   connection's `config.username` (its mailbox address, e.g. `support@ullav.com`) and
+   plus-addresses it as `{local}+{TKT-0020}@{domain}` — the ticket's display id, not the
+   bare number (see "why the display id, not the bare number" below). This lands the
+   reply in exactly the mailbox this queue is already configured to poll, with no
+   separate catch-all domain/DNS to set up. `run_email` in awe-runner
+   (`awe-server/src/bin/awe_runner.rs`) reads the resulting `reply_to` input and sets the
+   message's Reply-To header via lettre. See Inbound Email below for the poll side.
 5. Only `external_reporter_email` is available today — UUM's `/users/resolve` deliberately
    excludes email, so emailing an internal reporter's own address is out of scope until
    that's revisited.
@@ -249,6 +245,14 @@ raw SMTP mail:
    created task's real outcome (`GET /tasks/{id}` + `/tasks/{id}/runs` for the error
    detail on failure) instead of treating "queued successfully" as "delivered" — the
    task dispatch is async, out of process on awe-runner.
+
+**Why the display id, not the bare number:** `workflows.ticket_number` is already
+globally unique across every queue (assigned from one Postgres sequence,
+`cunav_ticket_seq` — see `handlers/workflows.rs`), so `ticket-20@...` was never actually
+ambiguous between queues. The switch to the display id (`TKT-0020`) is about the address
+reading unambiguously as a ticket reference on its own — a bare number after a `+` looks
+like it could be anyone's own plus-tag — and matching the same id already stamped on the
+subject tag, not about resolving a collision that doesn't exist today.
 
 ## Inbound Email
 
@@ -260,7 +264,12 @@ need this because it's triggered by a human action, not a clock.
 1. An awe-server `imap` connection (host/port/username config, mailbox password secret)
    backs a `scheduled_scripts` row (script_type `python`, cron e.g. every 2 minutes) —
    see `awe-server/docs/work-items/imap_poll.py` for the checked-in script source (the
-   schedule itself is configured through Obair's Schedules UI, not a migration).
+   schedule itself is configured through Obair's Schedules UI, not a migration). The same
+   connection is also the one a queue nominates as `jobs.inbound_email_connection_id` (see
+   Outbound Email above) — one connection, one mailbox, used by both directions: the poll
+   reads from it, outbound Reply-To addresses are built from its `config.username`. A
+   queue with no inbound connection configured simply gets no Reply-To on its outbound
+   mail (falls back to subject-tag resolution only, point 4 below).
 2. The script's only privileged action is one HTTP POST per new message to cunav's
    `src/app/api/email/inbound/route.ts`, authenticated via a shared secret
    (`X-Email-Webhook-Secret` / `CUNAV_EMAIL_WEBHOOK_SECRET`) — it does **not** carry an
@@ -274,13 +283,15 @@ need this because it's triggered by a human action, not a clock.
    message once — `seen_message_ids` (not just the UID) survives a `UIDVALIDITY` change
    (mailbox rebuild), which resets UID numbering but not Message-IDs.
 4. cunav's webhook resolves the ticket two ways, in order: the reply-to address
-   (`ticket-{number}@REPLY_TO_DOMAIN`, only usable when that env var is configured — see
-   Outbound Email above, which sets Reply-To to exactly this shape) then a
-   `[TKT-0009]`-style (`ticketId()`) tag the outbound route stamps onto every subject —
-   the fallback for clients that drop/mangle Reply-To. The legacy bare `[#{number}]`
-   form (stamped by older sends) still resolves too. Both paths resolve through the
-   existing `GET /references/resolve` endpoint
-   (`cunav::parse_ref`), not a reimplemented regex.
+   (plus-addressed, `{local}+TKT-0020@{domain}` — see Outbound Email above for how
+   that's built; `ticketRefFromReplyTo()` extracts whatever's between `+` and `@` with
+   no assumption about which domain or mailbox, since that's now per-queue rather than
+   one deployment-wide value) then a `[TKT-0009]`-style (`ticketId()`) tag the outbound
+   route stamps onto every subject — the fallback for clients that drop/mangle Reply-To.
+   The legacy bare `[#{number}]` form (stamped by older sends) still resolves too. Both
+   paths resolve through the existing `GET /references/resolve` endpoint
+   (`cunav::parse_ref`, which already accepts both a bare number and a `PREFIX-NNN`
+   display id), not a reimplemented regex.
 5. Resolved → posts a note (fixed title `INBOUND_EMAIL_NOTE_TITLE`, dedup on a
    `Message-ID: ...` line in the note body in case of a redelivered webhook call).
    Unresolved → creates a new ticket in `CUNAV_INBOUND_EMAIL_QUEUE_ID` with

@@ -62,6 +62,7 @@ function makeQueue(id: string, name = "Queue"): Queue {
     ai_route_confidence_threshold: 0.7,
     ai_rules: [],
     email_connection_id: null,
+    inbound_email_connection_id: null,
   };
 }
 

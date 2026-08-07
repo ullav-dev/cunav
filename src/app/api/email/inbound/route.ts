@@ -11,7 +11,6 @@ import { createTicket } from "@/lib/cunav-api";
 import { INBOUND_EMAIL_NOTE_TITLE } from "@/lib/types";
 
 const API_URL = process.env.API_URL ?? "http://localhost:8085";
-const REPLY_TO_DOMAIN = process.env.REPLY_TO_DOMAIN;
 // Queue a brand-new ticket lands in when an inbound email can't be resolved
 // to an existing one. Required for the "create ticket" path; the "reply on
 // an existing ticket" path works without it.
@@ -45,11 +44,17 @@ async function aweFetch(path: string, token: string) {
   return fetch(`${API_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } });
 }
 
-/** Extracts a ticket-number candidate from a `ticket-{number}@...` reply-to
- *  address, if any of `addresses` match that shape. */
-function ticketNumberFromReplyTo(addresses: string[]): string | null {
+/** Extracts a ticket-reference candidate from a plus-addressed reply-to
+ *  address (`local+TAG@domain`), if any of `addresses` match that shape.
+ *  Deliberately not tied to one known domain or mailbox — a queue's Reply-To
+ *  is derived from whatever inbound connection it's configured with (see
+ *  send-email/route.ts's replyToFromMailbox), which can differ per queue, so
+ *  this just extracts the tag and lets /references/resolve (cunav::parse_ref
+ *  in awe-server, which already accepts both a bare number and a
+ *  PREFIX-NNN display id) sort out whether it's a real ticket. */
+function ticketRefFromReplyTo(addresses: string[]): string | null {
   for (const addr of addresses) {
-    const match = /^ticket-(\d+)@/i.exec(addr.trim());
+    const match = /^[^+@]+\+([^@]+)@/.exec(addr.trim());
     if (match) return match[1];
   }
   return null;
@@ -104,11 +109,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Email service account not configured" }, { status: 500 });
   }
 
-  // Reply-to address is the primary signal (only reliable if REPLY_TO_DOMAIN
-  // is configured and the reply preserved the address); subject tag is the
-  // fallback for reply chains that only preserve the subject.
-  const candidate =
-    (REPLY_TO_DOMAIN ? ticketNumberFromReplyTo(to_emails) : null) ?? ticketNumberFromSubject(subject);
+  // Reply-to address is the primary signal (only reliable if the reply
+  // preserved the plus-addressed address); subject tag is the fallback for
+  // reply chains that only preserve the subject.
+  const candidate = ticketRefFromReplyTo(to_emails) ?? ticketNumberFromSubject(subject);
   const resolved = candidate ? await resolveTicket(token, candidate) : null;
 
   // Require the sender to actually be this ticket's own reporter before
