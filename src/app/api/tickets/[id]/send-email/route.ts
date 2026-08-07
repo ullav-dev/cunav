@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ticketId as formatTicketId } from "@/lib/ticket-id";
 
 const API_URL = process.env.API_URL ?? "http://localhost:8085";
+// See README "Outbound & Inbound Email" / CLAUDE.md "Outbound Email" for the
+// full setup: this domain needs a catch-all (or plus-addressing) mailbox that
+// funnels every ticket-{number}@REPLY_TO_DOMAIN address into the mailbox the
+// inbound IMAP poll watches.
+const REPLY_TO_DOMAIN = process.env.REPLY_TO_DOMAIN;
 
 interface TicketRow {
   job_id: string | null;
@@ -100,16 +106,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
 
-  // Tag the subject with the ticket number so a reply can be resolved back to
-  // its ticket — see src/app/api/email/inbound/route.ts's subject-fallback
-  // resolution. (The email script_type has no Reply-To support, unlike the
-  // old work-item script, so this tag is the only resolution path for now.)
-  const taggedSubject = ticket.ticket_number ? `${subject} [#${ticket.ticket_number}]` : subject;
+  // Tag the subject with the ticket's display id (e.g. "[TKT-0009]") so a
+  // reply can still be resolved back to its ticket even when the mail client
+  // drops/mangles Reply-To (forwarded messages, some webmail "reply" flows) —
+  // see src/app/api/email/inbound/route.ts's subject-fallback resolution,
+  // which also still accepts the legacy bare "[#N]" form for older chains.
+  const taggedSubject = ticket.ticket_number ? `${subject} [${formatTicketId(ticket.ticket_number)}]` : subject;
+
+  // Reply-To is the primary resolution path when REPLY_TO_DOMAIN is
+  // configured — `from` deliberately stays the connection's own account (see
+  // run_email's comment in awe-server: an unaligned From gets rejected or
+  // rewritten by most providers), but Reply-To can be anything, so a
+  // per-ticket address goes here instead. `ticketNumberFromReplyTo` in the
+  // inbound webhook expects exactly this `ticket-{number}@` shape.
+  const replyTo =
+    REPLY_TO_DOMAIN && ticket.ticket_number ? `ticket-${ticket.ticket_number}@${REPLY_TO_DOMAIN}` : null;
 
   const inputsRes = await aweFetch(`/tasks/${task.id}/inputs`, authHeader, {
     method: "PATCH",
     body: JSON.stringify({
-      values: { to: ticket.external_reporter_email, subject: taggedSubject, body_text: body },
+      values: {
+        to: ticket.external_reporter_email,
+        subject: taggedSubject,
+        body_text: body,
+        ...(replyTo ? { reply_to: replyTo } : {}),
+      },
     }),
   });
   if (!inputsRes.ok) {

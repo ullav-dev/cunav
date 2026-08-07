@@ -46,7 +46,7 @@ type EmailSendState =
   | { phase: "sending" | "polling" }
   | { phase: "sent"; at: string | null }
   | { phase: "failed"; error: string }
-  | { phase: "timeout" };
+  | { phase: "timeout"; lastError?: string };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -206,7 +206,14 @@ export default function TicketDetailPage() {
           <span className="text-[10px] font-medium text-red-600" title={state.error}>Failed to send</span>
         )}
         {state?.phase === "timeout" && (
-          <span className="text-[10px] font-medium text-amber-600" title="No delivery confirmation received from the mail task after 30s">
+          <span
+            className="text-[10px] font-medium text-amber-600"
+            title={
+              state.lastError
+                ? `No delivery confirmation after 30s — last status check failed: ${state.lastError}`
+                : "No delivery confirmation received from the mail task after 30s"
+            }
+          >
             No confirmation
           </span>
         )}
@@ -254,12 +261,16 @@ export default function TicketDetailPage() {
       // instead of assuming "queued" means "delivered".
       const taskId: string = data.task_id;
       const deadline = Date.now() + 30_000;
+      let lastError: string | undefined;
       while (Date.now() < deadline) {
         await sleep(2_000);
         const statusRes = await fetch(`/api/tickets/${ticket.id}/send-email/status?taskId=${taskId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!statusRes.ok) continue;
+        if (!statusRes.ok) {
+          lastError = `status check returned HTTP ${statusRes.status}`;
+          continue;
+        }
         const status = await statusRes.json();
         if (status.status === "sent") {
           setEmailSendState((prev) => ({ ...prev, [note.id]: { phase: "sent", at: status.at } }));
@@ -272,8 +283,8 @@ export default function TicketDetailPage() {
           return;
         }
       }
-      setEmailSendState((prev) => ({ ...prev, [note.id]: { phase: "timeout" } }));
-      await logEmailOutcome(note, `⚠️ Email to ${reporterEmail} has no delivery confirmation after 30s — check the Send Email task in Obair.`);
+      setEmailSendState((prev) => ({ ...prev, [note.id]: { phase: "timeout", lastError } }));
+      await logEmailOutcome(note, `⚠️ Email to ${reporterEmail} has no delivery confirmation after 30s — check the Send Email task in Obair.${lastError ? ` (${lastError})` : ""}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to send email";
       setEmailSendState((prev) => ({ ...prev, [note.id]: { phase: "failed", error: message } }));

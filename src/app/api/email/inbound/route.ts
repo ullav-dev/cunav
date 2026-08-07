@@ -55,15 +55,18 @@ function ticketNumberFromReplyTo(addresses: string[]): string | null {
   return null;
 }
 
-/** Extracts a ticket-number candidate from the `[#42]` tag cunav's own
- *  outbound route stamps onto the subject (see send-email/route.ts). Only
- *  this exact tag, not a bare "#42" — a bare number is too easy for one
- *  customer to reference in prose and land on another customer's ticket;
- *  the sender check below is the real guard, but there's no reason to widen
- *  the surface it has to catch. */
+/** Extracts a ticket-number candidate from the subject tag cunav's own
+ *  outbound route stamps on (see send-email/route.ts): either the current
+ *  `[TKT-0009]`-style display id, or the legacy bare `[#42]` form still
+ *  present in the tail of older reply chains. Only these exact bracketed
+ *  tags, never a loose "#42" or "TKT-0009" in prose — a bare number is too
+ *  easy for one customer to reference and land on another customer's
+ *  ticket; the sender check below is the real guard, but there's no reason
+ *  to widen the surface it has to catch. */
 function ticketNumberFromSubject(subject: string): string | null {
-  const tagged = /\[#(\d+)\]/.exec(subject);
-  return tagged ? tagged[1] : null;
+  const tagged = /\[(?:#(\d+)|[A-Za-z]{1,10}-(\d{1,9}))\]/.exec(subject);
+  if (!tagged) return null;
+  return tagged[1] ?? tagged[2];
 }
 
 async function resolveTicket(

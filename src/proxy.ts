@@ -13,7 +13,7 @@ function route(request: NextRequest): NextResponse {
     pathname.startsWith("/api/ai/") ||
     pathname.startsWith("/api/notify/") ||
     pathname.startsWith("/api/email/") ||
-    /^\/api\/tickets\/[^/]+\/send-email\/?$/.test(pathname)
+    /^\/api\/tickets\/[^/]+\/send-email(\/status)?\/?$/.test(pathname)
   ) {
     return NextResponse.next();
   }
