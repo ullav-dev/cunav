@@ -97,6 +97,17 @@ export function hasCunavAccess(token: string | null): boolean {
   );
 }
 
+/** Mirrors `hasCunavAccess` -- true if any of the caller's teams has the
+ * `tack` product slug enabled. Gates the tack-notes cutover: a team must be
+ * Tack-enabled in ullav-user-management (an ops task, not app code) before
+ * its notes traffic can move off awe-server's own notes API. */
+export function hasTackAccess(token: string | null): boolean {
+  const teams = getTeamClaims(token);
+  return Object.values(teams).some(
+    (t) => (t.products ?? []).includes("tack"),
+  );
+}
+
 export function getCunavTeamIds(token: string | null): string[] {
   const teams = getTeamClaims(token);
   return Object.entries(teams)
