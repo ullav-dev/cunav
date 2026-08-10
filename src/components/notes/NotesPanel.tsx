@@ -15,8 +15,22 @@ import {
   listNoteFolders, createNoteFolder, updateNoteFolder, deleteNoteFolder,
 } from "@/lib/notes-api";
 import type { Note, NoteFolder, NoteEntityType } from "@/lib/types";
-import { AI_NOTE_TITLES } from "@/lib/types";
+import { AI_NOTE_TITLES, INBOUND_EMAIL_NOTE_TITLE } from "@/lib/types";
 import { markNoteRead, isNoteUnread } from "@/lib/last-read";
+
+/** Pulls "Name <email>" back out of an inbound-email note's "*From: ...*"
+ *  line (see src/app/api/email/inbound/route.ts's noteBody template) and
+ *  formats it "Name (email)" — matching how a reporter is displayed
+ *  elsewhere in cunav (tickets/[id]/page.tsx's reporterDisplay) — or just
+ *  the bare email if no name was captured on the inbound side. */
+function extractInboundSender(body: string | null | undefined): string | null {
+  if (!body) return null;
+  const match = /\*From: (.*?)<([^>]+)>\*/.exec(body);
+  if (!match) return null;
+  const name = match[1].trim();
+  const email = match[2].trim();
+  return name ? `${name} (${email})` : email;
+}
 
 function formatRelative(iso: string, t: (key: string, params?: Record<string, string | number | Date>) => string): string {
   try {
@@ -164,7 +178,7 @@ function NoteThread({ note, token, resolveCreator }: { note: Note; token: string
 
 function NoteView({ note, folders, currentUserId, token, resolveCreator, onEdit, onDelete, onMove, deleting, extraActions }: {
   note: Note; folders: NoteFolder[]; currentUserId: string; token: string;
-  resolveCreator: (id: string, noteTitle?: string) => string;
+  resolveCreator: (id: string, noteTitle?: string, noteBody?: string | null) => string;
   onEdit: () => void; onDelete: () => void; onMove: (folderId: string | null) => void; deleting: boolean;
   extraActions?: (note: Note) => ReactNode;
 }) {
@@ -176,7 +190,7 @@ function NoteView({ note, folders, currentUserId, token, resolveCreator, onEdit,
         <div className="min-w-0">
           <h3 className="font-semibold text-slate-800 leading-snug">{note.title}</h3>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span className="text-xs text-slate-500">{resolveCreator(note.created_by, note.title)}</span>
+            <span className="text-xs text-slate-500">{resolveCreator(note.created_by, note.title, note.body)}</span>
             <span className="text-xs text-slate-400">{formatDate(note.updated_at)}</span>
             {note.is_shared
               ? <span className="text-xs text-violet-600 font-medium">{t("shared")}</span>
@@ -268,8 +282,17 @@ export default function NotesPanel({ entityType, entityId, isTeam, compact = fal
   const [foldersVisible, setFoldersVisible] = useState(true);
 
   const currentUserId = user?.id ?? "";
-  const resolveCreator = (id: string | null, noteTitle?: string): string => {
+  const resolveCreator = (id: string | null, noteTitle?: string, noteBody?: string | null): string => {
     if (noteTitle && AI_NOTE_TITLES.includes(noteTitle)) return t("aiAuthor");
+    // Inbound-email notes are created by the AI service account on the
+    // reporter's behalf (src/app/api/email/inbound/route.ts) — that account's
+    // id is a real but meaningless internal identifier here, never something
+    // an agent should see. The reporter's actual name/email is already
+    // embedded in the note body's "*From: ..." line; show that instead.
+    if (noteTitle === INBOUND_EMAIL_NOTE_TITLE) {
+      const from = extractInboundSender(noteBody);
+      if (from) return from;
+    }
     if (!id) return t("unknown");
     if (id === currentUserId) {
       const me = members.find((m) => m.id === id);
@@ -460,7 +483,7 @@ export default function NotesPanel({ entityType, entityId, isTeam, compact = fal
                 <span className="text-[10px] shrink-0">{note.is_shared ? "👥" : "🔒"}</span>
               </div>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-[10px] text-slate-400">{resolveCreator(note.created_by, note.title)}</span>
+                <span className="text-[10px] text-slate-400">{resolveCreator(note.created_by, note.title, note.body)}</span>
                 <span className="text-[10px] text-slate-300">·</span>
                 <span className={`text-[10px] ${unread ? "text-amber-600 font-medium" : "text-slate-400"}`}>{formatRelative(note.updated_at, t)}</span>
                 {folderName && <><span className="text-[10px] text-slate-300">·</span><span className="text-[10px] text-slate-400">📁 {folderName}</span></>}
