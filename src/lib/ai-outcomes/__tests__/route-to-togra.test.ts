@@ -1,18 +1,24 @@
 import { routeToTogra } from "../route-to-togra";
 import { createWorkflow, createWorkflowFromTemplate, updateWorkflow } from "../../awe-api";
 import { updateTicket } from "../../cunav-api";
-import { createNote } from "../../notes-api";
+import { tackNotesApi, resolveAiPrincipalId } from "../../tack-notes-server";
 import type { Ticket, Queue } from "../../types";
 
 jest.mock("../../awe-api");
 jest.mock("../../cunav-api");
-jest.mock("../../notes-api");
+jest.mock("../../tack-notes-server", () => ({
+  ...jest.requireActual("../../tack-notes-server"),
+  tackNotesApi: jest.fn(),
+  resolveAiPrincipalId: jest.fn(),
+}));
 
 const mockCreateWorkflow = createWorkflow as jest.Mock;
 const mockCreateWorkflowFromTemplate = createWorkflowFromTemplate as jest.Mock;
 const mockUpdateWorkflow = updateWorkflow as jest.Mock;
 const mockUpdateTicket = updateTicket as jest.Mock;
-const mockCreateNote = createNote as jest.Mock;
+const mockTackNotesApi = tackNotesApi as jest.Mock;
+const mockResolveAiPrincipalId = resolveAiPrincipalId as jest.Mock;
+const mockCreateNote = jest.fn();
 
 function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
   return {
@@ -26,7 +32,7 @@ function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
     status: "Not Started",
     schedule_status: "N/A",
     job_id: null,
-    team_id: null,
+    team_id: "team-1",
     organization_id: null,
     is_shared: true,
     sort_order: null,
@@ -83,6 +89,8 @@ function makeQueue(overrides: Partial<Queue> = {}): Queue {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockTackNotesApi.mockReturnValue({ createNote: mockCreateNote });
+  mockResolveAiPrincipalId.mockResolvedValue(undefined);
 });
 
 describe("routeToTogra.run", () => {
@@ -136,7 +144,14 @@ describe("routeToTogra.run", () => {
       ticket.id,
       expect.objectContaining({ togra_workflow_id: "story-1", togra_project_id: "proj-1", status: "In Progress" })
     );
-    expect(mockCreateNote).toHaveBeenCalled();
+    expect(mockCreateNote).toHaveBeenCalledWith(
+      expect.objectContaining({
+        team_id: "team-1",
+        visibility: "team",
+        title: "Auto-routed to Togra",
+        attach: { owning_service: "awe", entity_type: "workflow", entity_id: ticket.id },
+      })
+    );
     expect(result).toEqual({ executed: true, relatedWorkflowId: "story-1", noteId: "note-1" });
   });
 
@@ -159,5 +174,34 @@ describe("routeToTogra.run", () => {
       expect.objectContaining({ name: ticket.name, ticket_type: "bug", priority: "high" })
     );
     expect(result).toEqual({ executed: true, relatedWorkflowId: "story-2", noteId: "note-2" });
+  });
+
+  it("falls back to the queue's own team_id when the ticket has none", async () => {
+    mockCreateWorkflow.mockResolvedValue({ id: "story-3" });
+    mockUpdateWorkflow.mockResolvedValue({ id: "story-3" });
+    mockUpdateTicket.mockResolvedValue(makeTicket());
+    mockCreateNote.mockResolvedValue({ id: "note-3" });
+
+    const queue = makeQueue({ ai_togra_project_id: "proj-1", ai_togra_job_id: "job-1", team_id: "queue-team-1" });
+    const ticket = makeTicket({ team_id: null });
+
+    await routeToTogra.run({ token: "tok", ticket, queue, confidence: 0.85 });
+
+    expect(mockCreateNote).toHaveBeenCalledWith(expect.objectContaining({ team_id: "queue-team-1" }));
+  });
+
+  it("skips the note (but still reports the route as executed) when neither the ticket nor the queue has a team_id", async () => {
+    mockCreateWorkflow.mockResolvedValue({ id: "story-4" });
+    mockUpdateWorkflow.mockResolvedValue({ id: "story-4" });
+    mockUpdateTicket.mockResolvedValue(makeTicket());
+
+    const queue = makeQueue({ ai_togra_project_id: "proj-1", ai_togra_job_id: "job-1", team_id: null });
+    const ticket = makeTicket({ team_id: null });
+
+    const result = await routeToTogra.run({ token: "tok", ticket, queue, confidence: 0.85 });
+
+    expect(mockCreateNote).not.toHaveBeenCalled();
+    expect(result.executed).toBe(true);
+    expect(result.noteId).toBeUndefined();
   });
 });

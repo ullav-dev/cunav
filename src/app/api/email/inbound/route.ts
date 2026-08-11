@@ -6,7 +6,7 @@
 // Email" for the full design.
 import { NextRequest, NextResponse } from "next/server";
 import { getAiServiceToken } from "@/lib/ai-service-auth";
-import { listNotes, createNote } from "@/lib/notes-api";
+import { tackNotesApi, resolveAiPrincipalId, workflowAttachment } from "@/lib/tack-notes-server";
 import { createTicket } from "@/lib/cunav-api";
 import { INBOUND_EMAIL_NOTE_TITLE } from "@/lib/types";
 
@@ -78,7 +78,13 @@ function ticketNumberFromSubject(subject: string): string | null {
 async function resolveTicket(
   token: string,
   candidate: string
-): Promise<{ id: string; external_reporter_email: string | null; reporter_id: string | null } | null> {
+): Promise<{
+  id: string;
+  external_reporter_email: string | null;
+  reporter_id: string | null;
+  team_id: string | null;
+  organization_id: string | null;
+} | null> {
   const res = await aweFetch(`/references/resolve?ref=${encodeURIComponent(candidate)}`, token);
   if (!res.ok) return null;
   const resolved = await res.json();
@@ -90,6 +96,8 @@ async function resolveTicket(
     id: resolved.id,
     external_reporter_email: ticket.external_reporter_email ?? null,
     reporter_id: ticket.reporter_id ?? null,
+    team_id: ticket.team_id ?? null,
+    organization_id: ticket.organization_id ?? null,
   };
 }
 
@@ -149,27 +157,34 @@ export async function POST(req: NextRequest) {
   // customer's reply land on another customer's ticket. A mismatch (or a
   // ticket with no reporter email resolvable at all) falls through to
   // filing a new ticket instead of silently dropping the message.
-  const ticketId =
-    resolved && expectedSenderEmail?.toLowerCase() === from_email.toLowerCase()
-      ? resolved.id
-      : null;
+  const matchedTicket =
+    resolved && expectedSenderEmail?.toLowerCase() === from_email.toLowerCase() ? resolved : null;
 
   const noteBody = `${body.trim()}\n\n---\n*From: ${from_name ? `${from_name} ` : ""}<${from_email}>*\n*Message-ID: ${message_id}*`;
 
-  if (ticketId) {
+  if (matchedTicket) {
+    const { id: ticketId, team_id: teamId, organization_id: organizationId } = matchedTicket;
+    const api = tackNotesApi(token);
     // Dedup against redelivery (the poll script's own state should already
     // prevent this, but a retried webhook call after a partial failure
     // shouldn't create a duplicate note).
-    const existing = await listNotes(token, "workflow", ticketId).catch(() => []);
-    if (existing.some((n) => n.body?.includes(`Message-ID: ${message_id}`))) {
+    const attach = workflowAttachment(ticketId);
+    const existing = await api.listNotesByAttachment(attach.owning_service, attach.entity_type, attach.entity_id).catch(() => []);
+    if (existing.some((n) => n.body_markdown?.includes(`Message-ID: ${message_id}`))) {
       return NextResponse.json({ status: "duplicate" });
     }
-    await createNote(token, {
-      entity_type: "workflow",
-      entity_id: ticketId,
+    if (!teamId) {
+      console.error(`Inbound email: ticket ${ticketId} has no team_id -- cannot file note`);
+      return NextResponse.json({ error: "Ticket has no team_id" }, { status: 500 });
+    }
+    const createdBy = await resolveAiPrincipalId(api, organizationId);
+    await api.createNote({
+      team_id: teamId,
+      visibility: "team",
       title: INBOUND_EMAIL_NOTE_TITLE,
-      body: noteBody,
-      is_shared: true,
+      body_markdown: noteBody,
+      attach,
+      ...(createdBy ? { created_by: createdBy } : {}),
     });
     return NextResponse.json({ status: "noted", ticket_id: ticketId });
   }

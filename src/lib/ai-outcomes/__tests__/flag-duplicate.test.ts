@@ -1,13 +1,19 @@
 import { flagDuplicate } from "../flag-duplicate";
 import { listTickets } from "../../cunav-api";
-import { createNote } from "../../notes-api";
-import type { Ticket } from "../../types";
+import { tackNotesApi, resolveAiPrincipalId } from "../../tack-notes-server";
+import type { Ticket, Queue } from "../../types";
 
 jest.mock("../../cunav-api");
-jest.mock("../../notes-api");
+jest.mock("../../tack-notes-server", () => ({
+  ...jest.requireActual("../../tack-notes-server"),
+  tackNotesApi: jest.fn(),
+  resolveAiPrincipalId: jest.fn(),
+}));
 
 const mockListTickets = listTickets as jest.Mock;
-const mockCreateNote = createNote as jest.Mock;
+const mockTackNotesApi = tackNotesApi as jest.Mock;
+const mockResolveAiPrincipalId = resolveAiPrincipalId as jest.Mock;
+const mockCreateNote = jest.fn();
 
 function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
   return {
@@ -21,7 +27,7 @@ function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
     status: "Not Started",
     schedule_status: "N/A",
     job_id: "job-1",
-    team_id: null,
+    team_id: "team-1",
     organization_id: null,
     is_shared: true,
     sort_order: null,
@@ -49,8 +55,12 @@ function makeTicket(overrides: Partial<Ticket> = {}): Ticket {
   };
 }
 
+const emptyQueue = {} as Queue;
+
 beforeEach(() => {
   jest.clearAllMocks();
+  mockTackNotesApi.mockReturnValue({ createNote: mockCreateNote });
+  mockResolveAiPrincipalId.mockResolvedValue(undefined);
 });
 
 describe("flagDuplicate.run", () => {
@@ -58,7 +68,7 @@ describe("flagDuplicate.run", () => {
     const result = await flagDuplicate.run({
       token: "tok",
       ticket: makeTicket({ job_id: null }),
-      queue: {} as never,
+      queue: emptyQueue,
       confidence: 0.8,
     });
     expect(result).toEqual({ executed: false });
@@ -70,7 +80,7 @@ describe("flagDuplicate.run", () => {
     const result = await flagDuplicate.run({
       token: "tok",
       ticket: makeTicket(),
-      queue: {} as never,
+      queue: emptyQueue,
       confidence: 0.8,
     });
     expect(result).toEqual({ executed: false });
@@ -85,7 +95,7 @@ describe("flagDuplicate.run", () => {
     const result = await flagDuplicate.run({
       token: "tok",
       ticket: makeTicket({ name: "Login button is broken", description: "Clicking login does nothing" }),
-      queue: {} as never,
+      queue: emptyQueue,
       confidence: 0.8,
     });
     // executed: false, but confidence is still the real overlap score (not
@@ -115,18 +125,18 @@ describe("flagDuplicate.run", () => {
       description: "Clicking the login button does nothing",
     });
 
-    const result = await flagDuplicate.run({ token: "tok", ticket, queue: {} as never, confidence: 0.8 });
+    const result = await flagDuplicate.run({ token: "tok", ticket, queue: emptyQueue, confidence: 0.8 });
 
     expect(mockCreateNote).toHaveBeenCalledWith(
-      "tok",
       expect.objectContaining({
-        entity_type: "workflow",
-        entity_id: ticket.id,
+        team_id: "team-1",
+        visibility: "team",
         title: "Possible duplicate flagged",
-        // A markdown link, not just the ticket id as plain text — NotesPanel
-        // renders note bodies through ReactMarkdown, so this becomes a real
-        // clickable link straight to the matched ticket.
-        body: expect.stringMatching(/\[#7 — "Login button broken on checkout page"\]\(.*\/tickets\/ticket-2\)/),
+        attach: { owning_service: "awe", entity_type: "workflow", entity_id: ticket.id },
+        // A markdown link, not just the ticket id as plain text — the note
+        // renders through NoteMarkdown, so this becomes a real clickable
+        // link straight to the matched ticket.
+        body_markdown: expect.stringMatching(/\[#7 — "Login button broken on checkout page"\]\(.*\/tickets\/ticket-2\)/),
       })
     );
     expect(result.executed).toBe(true);
@@ -135,12 +145,54 @@ describe("flagDuplicate.run", () => {
     expect(result.confidence).toBeGreaterThanOrEqual(0.35);
   });
 
+  it("attributes the note to a resolved system principal when one exists", async () => {
+    const match = makeTicket({
+      id: "ticket-2",
+      ticket_number: 7,
+      name: "Login button broken on checkout page",
+      description: "Clicking the login button does nothing on the checkout page",
+    });
+    mockListTickets.mockResolvedValue([makeTicket(), match]);
+    mockCreateNote.mockResolvedValue({ id: "note-1" });
+    mockResolveAiPrincipalId.mockResolvedValue("principal-1");
+
+    await flagDuplicate.run({
+      token: "tok",
+      ticket: makeTicket({ name: "Login button is broken", description: "Clicking the login button does nothing" }),
+      queue: emptyQueue,
+      confidence: 0.8,
+    });
+
+    expect(mockCreateNote).toHaveBeenCalledWith(expect.objectContaining({ created_by: "principal-1" }));
+  });
+
+  it("skips the note (but still reports the match) when the ticket has no team_id at all", async () => {
+    const match = makeTicket({
+      id: "ticket-2",
+      ticket_number: 7,
+      name: "Login button broken on checkout page",
+      description: "Clicking the login button does nothing on the checkout page",
+    });
+    mockListTickets.mockResolvedValue([makeTicket({ team_id: null }), match]);
+
+    const result = await flagDuplicate.run({
+      token: "tok",
+      ticket: makeTicket({ team_id: null, name: "Login button is broken", description: "Clicking the login button does nothing" }),
+      queue: emptyQueue,
+      confidence: 0.8,
+    });
+
+    expect(mockCreateNote).not.toHaveBeenCalled();
+    expect(result.executed).toBe(true);
+    expect(result.noteId).toBeUndefined();
+  });
+
   it("searches organization-wide when the ticket has an organization_id, not just its own queue", async () => {
     mockListTickets.mockResolvedValue([makeTicket({ id: "ticket-2" })]);
     await flagDuplicate.run({
       token: "tok",
       ticket: makeTicket({ organization_id: "org-1" }),
-      queue: {} as never,
+      queue: emptyQueue,
       confidence: 0.8,
     });
     expect(mockListTickets).toHaveBeenCalledWith("tok", { organization_id: "org-1" });
