@@ -81,6 +81,11 @@ export interface TeamClaim {
   team_roles: string[];
   product_roles: Record<string, string>;
   products: string[];
+  /** Already present on the wire (every team claim carries its own
+   * organization_id) -- just not previously declared here. Needed to
+   * resolve which tack-server organization a team's system principals
+   * belong to (see getTackTeamIds's own doc comment). */
+  organization_id?: string;
 }
 
 export function getTeamClaims(token: string | null): Record<string, TeamClaim> {
@@ -112,6 +117,17 @@ export function getCunavTeamIds(token: string | null): string[] {
   const teams = getTeamClaims(token);
   return Object.entries(teams)
     .filter(([, t]) => (t.products ?? []).includes("cunav"))
+    .map(([id]) => id);
+}
+
+/** Mirrors `getCunavTeamIds`. Tack-server notes need a `team_id` to file
+ * under (unlike awe-server's own notes API, which resolves the caller's
+ * team implicitly server-side) -- `NotesPanel` uses the first of these as
+ * the operative team for new notes/folders it creates. */
+export function getTackTeamIds(token: string | null): string[] {
+  const teams = getTeamClaims(token);
+  return Object.entries(teams)
+    .filter(([, t]) => (t.products ?? []).includes("tack"))
     .map(([id]) => id);
 }
 

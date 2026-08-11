@@ -18,6 +18,17 @@ function route(request: NextRequest): NextResponse {
     return NextResponse.next();
   }
 
+  // Proxy /api/tack/* → tack-server (strips /api/tack prefix). Must come
+  // before the general /api/* → awe-server rule below. Same "direct to
+  // tack-server" pattern as tack's own app's /api/* rewrite -- a plain
+  // passthrough of the caller's own tack JWT, not a translation layer.
+  if (pathname.startsWith("/api/tack/")) {
+    const tackUrl = process.env.TACK_URL ?? "http://localhost:8087";
+    return NextResponse.rewrite(
+      new URL(pathname.slice("/api/tack".length) + search, tackUrl)
+    );
+  }
+
   // All other /api/* paths forward to awe-server.
   if (pathname.startsWith("/api/")) {
     const apiUrl = process.env.API_URL ?? "http://localhost:8085";

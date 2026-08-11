@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
@@ -10,9 +10,10 @@ import { getTicket, updateTicket, deleteTicket } from "@/lib/cunav-api";
 import { ticketId } from "@/lib/ticket-id";
 import { markRead, hasUnreadAiAnalysis, markAiAnalysisRead } from "@/lib/last-read";
 import { listQueues } from "@/lib/cunav-api";
-import { createNote, createNoteReply } from "@/lib/notes-api";
+import { getTackTeamIds } from "@/lib/auth-api";
+import { createTackNotesApi, type Note } from "@ullav-dev/tack-notes";
 import { useRouter } from "@/i18n/navigation";
-import type { Ticket, Queue, Status, TicketType, Priority, Note } from "@/lib/types";
+import type { Ticket, Queue, Status, TicketType, Priority } from "@/lib/types";
 import StatusPill from "@/components/StatusPill";
 import PriorityBadge from "@/components/PriorityBadge";
 import TicketTypeBadge from "@/components/TicketTypeBadge";
@@ -72,6 +73,12 @@ export default function TicketDetailPage() {
   const tStatus = useTranslations("status");
   const tType = useTranslations("ticketType");
   const tPri = useTranslations("priority");
+
+  // Backs handleSaveAsNote/logEmailOutcome below -- both write directly to
+  // tack-server (matching NotesPanel's own OWNING_SERVICE="awe" attachment
+  // scope), same as every other note write path on this page now.
+  const tackApi = useMemo(() => (token ? createTackNotesApi("/api/tack", token) : null), [token]);
+  const tackTeamId = useMemo(() => getTackTeamIds(token)[0] ?? null, [token]);
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [queues, setQueues] = useState<Queue[]>([]);
@@ -225,8 +232,17 @@ export default function TicketDetailPage() {
   }
 
   async function handleSaveAsNote(title: string, body: string, isShared = false) {
-    if (!token || !ticket) return;
-    await createNote(token, { entity_type: "workflow", entity_id: ticket.id, title, body: body || undefined, is_shared: isShared });
+    if (!tackApi || !tackTeamId || !ticket) return;
+    await tackApi.createNote({
+      team_id: tackTeamId,
+      visibility: isShared ? "team" : "private",
+      title,
+      // tack-server requires a non-empty body, unlike awe-server's own notes
+      // API -- title is model-caller-supplied content whenever the explorer
+      // sources come back with nothing else worth saving.
+      body_markdown: body.trim() || title,
+      attach: { owning_service: "awe", entity_type: "workflow", entity_id: ticket.id },
+    });
   }
 
   function renderSendEmailAction(note: Note) {
@@ -235,7 +251,7 @@ export default function TicketDetailPage() {
     // reporter_id defaults to the ticket's creator when unset (see
     // create_workflow in awe-server), so this is now available on nearly
     // every ticket, not just ones with an explicit external reporter.
-    if ((!ticket?.external_reporter_email && !ticket?.reporter_id) || !note.body) return null;
+    if ((!ticket?.external_reporter_email && !ticket?.reporter_id) || !note.body_markdown) return null;
     const state = emailSendState[note.id];
     const busy = state?.phase === "sending" || state?.phase === "polling";
     return (
@@ -284,8 +300,8 @@ export default function TicketDetailPage() {
   // that fails, the inline status next to the button (above) is still the
   // source of truth for this session.
   async function logEmailOutcome(note: Note, body: string) {
-    if (!token) return;
-    try { await createNoteReply(token, note.id, body); } catch { /* note not shared, or reply failed */ }
+    if (!tackApi) return;
+    try { await tackApi.createReply(note.id, body); } catch { /* note not shared, or reply failed */ }
   }
 
   async function handleSendAsEmail(note: Note) {
@@ -300,7 +316,7 @@ export default function TicketDetailPage() {
       const res = await fetch(`/api/tickets/${ticket.id}/send-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ subject: `Re: ${ticket.name}`, body: note.body ?? "" }),
+        body: JSON.stringify({ subject: `Re: ${ticket.name}`, body: note.body_markdown ?? "" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
@@ -353,15 +369,17 @@ export default function TicketDetailPage() {
         status: "In Progress",
       });
       const tograStoryUrl = tograUrl ? `${tograUrl}/en/projects/${projectId}/stories/${workflowId}` : null;
-      await createNote(token, {
-        entity_type: "workflow",
-        entity_id: ticket.id,
-        title: `Sent to Togra: ${project} › ${job}`,
-        body: tograStoryUrl
-          ? `Story created in **${project}** › **${job}**.\n\n[View in Togra ↗](${tograStoryUrl})`
-          : `Story created in **${project}** › **${job}**. Togra workflow ID: \`${workflowId}\``,
-        is_shared: true,
-      });
+      if (tackApi && tackTeamId) {
+        await tackApi.createNote({
+          team_id: tackTeamId,
+          visibility: "team",
+          title: `Sent to Togra: ${project} › ${job}`,
+          body_markdown: tograStoryUrl
+            ? `Story created in **${project}** › **${job}**.\n\n[View in Togra ↗](${tograStoryUrl})`
+            : `Story created in **${project}** › **${job}**. Togra workflow ID: \`${workflowId}\``,
+          attach: { owning_service: "awe", entity_type: "workflow", entity_id: ticket.id },
+        });
+      }
       if (noteCopyWarning) setError(noteCopyWarning);
     } catch (err) {
       console.error("handleTograSent failed:", err);
@@ -676,7 +694,7 @@ export default function TicketDetailPage() {
               <h2 className="text-sm font-semibold text-slate-700">{t("notesTitle")}</h2>
             </div>
             <div className="flex-1 overflow-hidden min-h-0 px-4 py-3">
-              <NotesPanel entityType="workflow" entityId={ticket.id} isTeam folderOrientation="vertical" renderNoteActions={renderSendEmailAction} refreshSignal={refreshSignal} />
+              <NotesPanel entityType="workflow" entityId={ticket.id} renderNoteActions={renderSendEmailAction} refreshSignal={refreshSignal} />
             </div>
           </div>
         </div>
@@ -797,7 +815,7 @@ export default function TicketDetailPage() {
             <div className="flex-1 overflow-hidden p-4 flex flex-col min-h-0">
               {explorerTab === "notes" && (
                 <div className="flex-1 min-h-0">
-                  <NotesPanel entityType="workflow" entityId={ticket.id} isTeam twoColumn renderNoteActions={renderSendEmailAction} refreshSignal={refreshSignal} />
+                  <NotesPanel entityType="workflow" entityId={ticket.id} twoColumn renderNoteActions={renderSendEmailAction} refreshSignal={refreshSignal} />
                 </div>
               )}
               {explorerTab === "ai" && (
