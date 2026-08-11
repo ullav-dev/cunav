@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Ticket } from "@/lib/types";
 import { AI_ANALYSIS_NOTE_TITLE } from "@/lib/types";
-import { listNotes } from "@/lib/notes-api";
+import { createTackNotesApi } from "@ullav-dev/tack-notes";
 import { updateTicket } from "@/lib/cunav-api";
+
+// Matches NotesPanel.tsx's OWNING_SERVICE — every ticket note lives under
+// this scope in tack-server.
+const OWNING_SERVICE = "awe";
 
 interface Props {
   ticket: Ticket;
@@ -22,10 +26,13 @@ export default function FeedbackReasonModal({ ticket, feedback, onClose, onSubmi
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const tackApi = useMemo(() => (token ? createTackNotesApi("/api/tack", token) : null), [token]);
+
   // Find the AI Analysis note this feedback judges, so it can be linked for reference.
   useEffect(() => {
-    if (!token) return;
-    listNotes(token, "workflow", ticket.id)
+    if (!tackApi) return;
+    tackApi
+      .listNotesByAttachment(OWNING_SERVICE, "workflow", ticket.id)
       .then((notes) => {
         const aiNotes = notes
           .filter((n) => n.title === AI_ANALYSIS_NOTE_TITLE)
@@ -33,7 +40,7 @@ export default function FeedbackReasonModal({ ticket, feedback, onClose, onSubmi
         setNoteId(aiNotes[0]?.id ?? null);
       })
       .catch(() => setNoteId(null));
-  }, [token, ticket.id]);
+  }, [tackApi, ticket.id]);
 
   async function handleSubmit() {
     if (!token) return;
