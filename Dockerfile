@@ -1,7 +1,8 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json package-lock.json .npmrc ./
+RUN --mount=type=secret,id=npm_token \
+    NODE_AUTH_TOKEN=$(cat /run/secrets/npm_token) npm ci
 
 FROM node:22-alpine AS builder
 WORKDIR /app
