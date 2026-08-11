@@ -13,6 +13,12 @@ const gitSha: string = (() => {
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // @ullav-dev/tack-notes ships raw TS source (no build step, same as
+  // @ullav-dev/dam-picker) -- Next excludes node_modules from
+  // transpilation by default, so a real published dependency needs this
+  // opt-in. Matches awe-client's existing next.config.ts precedent for
+  // dam-picker exactly.
+  transpilePackages: ["@ullav-dev/tack-notes"],
   env: {
     NEXT_PUBLIC_APP_VERSION: appVersion,
     NEXT_PUBLIC_GIT_SHA: gitSha,
