@@ -2,9 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Ticket, Note } from "@/lib/types";
-import { listNotes, createNote } from "@/lib/notes-api";
+import type { Ticket } from "@/lib/types";
+import { createNote } from "@/lib/notes-api";
+import { createTackNotesApi, type Note as TackNote } from "@ullav-dev/tack-notes";
 import { ticketId } from "@/lib/ticket-id";
+
+// Notes copied onto the new Togra story are still written via awe-server's
+// own notes-api, not tack-server: the story is a Togra workflow, and Togra's
+// own notes UI hasn't migrated to tack-notes yet (see togra pilot, Phase 3)
+// -- a note written to tack-server here would be invisible in Togra's still
+// awe-server-backed panel. Only the *read* side (the ticket's own notes,
+// which cunav did migrate) moves to tack-server. Move the write side too
+// once Togra's own NotesPanel cuts over.
+const OWNING_SERVICE = "awe";
 
 interface Project {
   id: string;
@@ -59,20 +69,25 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [projectsError, setProjectsError] = useState<string | null>(null);
 
-  const [notes, setNotes] = useState<Note[]>([]);
+  const [notes, setNotes] = useState<TackNote[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(true);
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
 
+  const tackApi = useMemo(() => (token ? createTackNotesApi("/api/tack", token) : null), [token]);
+
   // Load the ticket's own notes so the user can pick which ones to copy over.
-  // Replies are left out — a copied reply with no parent wouldn't make sense
-  // standalone on the new Togra story.
+  // listNotesByAttachment only ever returns top-level notes (a reply has no
+  // content_attachments row of its own — see tack-server's list_notes_by_
+  // attachment), so there's no separate parent_id filter needed here; a
+  // copied reply with no parent wouldn't make sense standalone anyway.
   useEffect(() => {
-    if (!token) return;
-    listNotes(token, "workflow", ticket.id)
-      .then((list) => setNotes(list.filter((n) => !n.parent_id)))
+    if (!tackApi) return;
+    tackApi
+      .listNotesByAttachment(OWNING_SERVICE, "workflow", ticket.id)
+      .then(setNotes)
       .catch(() => setNotes([]))
       .finally(() => setLoadingNotes(false));
-  }, [token, ticket.id]);
+  }, [tackApi, ticket.id]);
 
   function toggleNote(id: string) {
     setSelectedNoteIds((prev) => {
@@ -232,13 +247,15 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
         const ticketUrl = `${window.location.origin}/en/tickets/${ticket.id}`;
         const attribution = `\n\n---\n*This note was copied from [Cunav ticket ${ticketId(ticket.ticket_number)}](${ticketUrl}) at ${time} on ${date}.*`;
         const toCopy = notes.filter((n) => selectedNoteIds.has(n.id));
+        // Copies still land on awe-server, not tack-server — see the
+        // OWNING_SERVICE comment above.
         const results = await Promise.allSettled(
           toCopy.map((note) =>
             createNote(token, {
               entity_type: "workflow",
               entity_id: created.id,
               title: note.title,
-              body: (note.body ?? "") + attribution,
+              body: (note.body_markdown ?? "") + attribution,
               is_shared: true,
             })
           )
@@ -419,8 +436,8 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
                           />
                           <span className="min-w-0">
                             <span className="block text-sm font-medium text-slate-800 truncate">{note.title}</span>
-                            {note.body && (
-                              <span className="block text-xs text-slate-400 truncate">{note.body}</span>
+                            {note.body_markdown && (
+                              <span className="block text-xs text-slate-400 truncate">{note.body_markdown}</span>
                             )}
                           </span>
                         </label>
