@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createWorkflow, createWorkflowFromTemplate, updateWorkflow } from "@/lib/awe-api";
 import { updateTicket } from "@/lib/cunav-api";
-import { createNote } from "@/lib/notes-api";
+import { tackNotesApi, resolveAiPrincipalId, workflowAttachment } from "@/lib/tack-notes-server";
 import { AI_AUTOROUTE_NOTE_TITLE } from "@/lib/types";
 import type { AiOutcomeDefinition } from "./types";
 
@@ -74,14 +74,24 @@ export const routeToTogra: AiOutcomeDefinition = {
       status: "In Progress",
     });
 
-    const note = await createNote(token, {
-      entity_type: "workflow",
-      entity_id: ticket.id,
-      title: AI_AUTOROUTE_NOTE_TITLE,
-      body: `Story created automatically by AI triage. Togra workflow ID: \`${created.id}\``,
-      is_shared: true,
-    });
+    const teamId = ticket.team_id ?? queue.team_id;
+    let noteId: string | undefined;
+    if (teamId) {
+      const api = tackNotesApi(token);
+      const createdBy = await resolveAiPrincipalId(api, ticket.organization_id);
+      const note = await api.createNote({
+        team_id: teamId,
+        visibility: "team",
+        title: AI_AUTOROUTE_NOTE_TITLE,
+        body_markdown: `Story created automatically by AI triage. Togra workflow ID: \`${created.id}\``,
+        attach: workflowAttachment(ticket.id),
+        ...(createdBy ? { created_by: createdBy } : {}),
+      });
+      noteId = note.id;
+    } else {
+      console.error(`route-to-togra: ticket ${ticket.id} has no team_id (queue ${queue.id} either) -- skipping note`);
+    }
 
-    return { executed: true, relatedWorkflowId: created.id, noteId: note.id };
+    return { executed: true, relatedWorkflowId: created.id, noteId };
   },
 };

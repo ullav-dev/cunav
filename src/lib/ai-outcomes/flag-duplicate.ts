@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { listTickets } from "@/lib/cunav-api";
-import { createNote } from "@/lib/notes-api";
+import { tackNotesApi, resolveAiPrincipalId, workflowAttachment } from "@/lib/tack-notes-server";
 import { AI_DUPLICATE_NOTE_TITLE } from "@/lib/types";
 import type { AiOutcomeDefinition } from "./types";
 
@@ -92,7 +92,7 @@ export const flagDuplicate: AiOutcomeDefinition = {
   promptGuidance: "", // unused — see deterministic: true above.
   payloadSchema: z.object({}),
 
-  async run({ token, ticket }) {
+  async run({ token, ticket, queue }) {
     if (!ticket.job_id) return { executed: false };
 
     // Organization-wide, not queue-scoped: the same underlying issue is
@@ -128,21 +128,31 @@ export const flagDuplicate: AiOutcomeDefinition = {
     // find it by hand.
     const link = `[${label} — "${best.candidate.name}"](${ticketUrl(best.candidate.id)})`;
 
-    const note = await createNote(token, {
-      entity_type: "workflow",
-      entity_id: ticket.id,
-      title: AI_DUPLICATE_NOTE_TITLE,
-      body:
-        `This ticket may duplicate ${link} (${matchPct}% word overlap). ` +
-        "Please review and merge or close if confirmed.",
-      is_shared: true,
-    });
+    const teamId = ticket.team_id ?? queue.team_id;
+    let noteId: string | undefined;
+    if (teamId) {
+      const api = tackNotesApi(token);
+      const createdBy = await resolveAiPrincipalId(api, ticket.organization_id);
+      const note = await api.createNote({
+        team_id: teamId,
+        visibility: "team",
+        title: AI_DUPLICATE_NOTE_TITLE,
+        body_markdown:
+          `This ticket may duplicate ${link} (${matchPct}% word overlap). ` +
+          "Please review and merge or close if confirmed.",
+        attach: workflowAttachment(ticket.id),
+        ...(createdBy ? { created_by: createdBy } : {}),
+      });
+      noteId = note.id;
+    } else {
+      console.error(`flag-duplicate: ticket ${ticket.id} has no team_id (queue ${queue.id} either) -- skipping note`);
+    }
 
     return {
       executed: true,
       detail: `Possible duplicate of ${label} (${matchPct}% word overlap)`,
       relatedWorkflowId: best.candidate.id,
-      noteId: note.id,
+      noteId,
       confidence: best.score,
     };
   },

@@ -11,7 +11,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { getTicket, listTickets, updateTicket, createTicketOutcome } from "@/lib/cunav-api";
 import { getJob } from "@/lib/awe-api";
-import { createNote } from "@/lib/notes-api";
+import { tackNotesApi, resolveAiPrincipalId, workflowAttachment } from "@/lib/tack-notes-server";
 import { getAiServiceToken } from "@/lib/ai-service-auth";
 import { getAiModel, AiProviderNotConfiguredError } from "@/lib/ai-provider";
 import type { AiProvider } from "@/lib/ai-settings";
@@ -211,13 +211,21 @@ export async function POST(req: NextRequest) {
       ? `${decision.analysis}\n\n---\n*AI confidence — ${outcomeSummary}*`
       : decision.analysis;
 
-    await createNote(token, {
-      entity_type: "workflow",
-      entity_id: ticket.id,
-      title: AI_ANALYSIS_NOTE_TITLE,
-      body: analysisBody,
-      is_shared: true,
-    });
+    const analysisTeamId = ticket.team_id ?? queue.team_id;
+    if (analysisTeamId) {
+      const api = tackNotesApi(token);
+      const createdBy = await resolveAiPrincipalId(api, ticket.organization_id);
+      await api.createNote({
+        team_id: analysisTeamId,
+        visibility: "team",
+        title: AI_ANALYSIS_NOTE_TITLE,
+        body_markdown: analysisBody,
+        attach: workflowAttachment(ticket.id),
+        ...(createdBy ? { created_by: createdBy } : {}),
+      });
+    } else {
+      console.error(`AI triage: ticket ${ticket.id} has no team_id (queue ${queue.id} either) -- skipping analysis note`);
+    }
 
     // Deterministic outcome types (e.g. flag_duplicate) run unconditionally
     // here, driven only by the queue's rule config — not by decision.outcomes,
