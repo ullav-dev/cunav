@@ -3,17 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Ticket } from "@/lib/types";
-import { createNote } from "@/lib/notes-api";
 import { createTackNotesApi, type Note as TackNote } from "@ullav-dev/tack-notes";
 import { ticketId } from "@/lib/ticket-id";
 
-// Notes copied onto the new Togra story are still written via awe-server's
-// own notes-api, not tack-server: the story is a Togra workflow, and Togra's
-// own notes UI hasn't migrated to tack-notes yet (see togra pilot, Phase 3)
-// -- a note written to tack-server here would be invisible in Togra's still
-// awe-server-backed panel. Only the *read* side (the ticket's own notes,
-// which cunav did migrate) moves to tack-server. Move the write side too
-// once Togra's own NotesPanel cuts over.
 const OWNING_SERVICE = "awe";
 
 interface Project {
@@ -239,6 +231,9 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
         if (!patch.ok) throw new Error(`Patch failed: HTTP ${patch.status}`);
         created = await patch.json();
       }
+      const project = projects.find((p) => p.id === selectedProject);
+      const job = jobs.find((j) => j.id === selectedJob);
+
       let noteCopyWarning: string | undefined;
       if (selectedNoteIds.size > 0) {
         const now = new Date();
@@ -247,27 +242,27 @@ export default function SendToTograModal({ ticket, onClose, onSent }: Props) {
         const ticketUrl = `${window.location.origin}/en/tickets/${ticket.id}`;
         const attribution = `\n\n---\n*This note was copied from [Cunav ticket ${ticketId(ticket.ticket_number)}](${ticketUrl}) at ${time} on ${date}.*`;
         const toCopy = notes.filter((n) => selectedNoteIds.has(n.id));
-        // Copies still land on awe-server, not tack-server — see the
-        // OWNING_SERVICE comment above.
-        const results = await Promise.allSettled(
-          toCopy.map((note) =>
-            createNote(token, {
-              entity_type: "workflow",
-              entity_id: created.id,
-              title: note.title,
-              body: (note.body_markdown ?? "") + attribution,
-              is_shared: true,
-            })
-          )
-        );
-        const failures = results.filter((r) => r.status === "rejected").length;
-        if (failures > 0) {
-          noteCopyWarning = `Sent to Togra, but ${failures} of ${toCopy.length} note(s) failed to copy.`;
+        if (!tackApi || !project?.team_id) {
+          noteCopyWarning = `Sent to Togra, but notes could not be copied (no team on the destination project).`;
+        } else {
+          const results = await Promise.allSettled(
+            toCopy.map((note) =>
+              tackApi.createNote({
+                team_id: project.team_id!,
+                visibility: "team",
+                title: note.title,
+                body_markdown: (note.body_markdown ?? "") + attribution,
+                attach: { owning_service: OWNING_SERVICE, entity_type: "workflow", entity_id: created.id },
+              })
+            )
+          );
+          const failures = results.filter((r) => r.status === "rejected").length;
+          if (failures > 0) {
+            noteCopyWarning = `Sent to Togra, but ${failures} of ${toCopy.length} note(s) failed to copy.`;
+          }
         }
       }
 
-      const project = projects.find((p) => p.id === selectedProject);
-      const job = jobs.find((j) => j.id === selectedJob);
       // Use the job's own project_id as the authoritative cross-reference, not selectedProject
       const actualProjectId = job?.project_id ?? selectedProject;
       onSent(created.id, actualProjectId, project?.name ?? "Togra", job?.name ?? "backlog", noteCopyWarning);
