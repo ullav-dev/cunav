@@ -18,7 +18,7 @@
     "@ai-sdk/react": "^4.0.2",
     "@tailwindcss/typography": "^0.5.19",
     "@uiw/react-md-editor": "^4.1.1",
-    "@ullav-dev/tack-notes": "^0.6.0",
+    "@ullav-dev/tack-notes": "*",
     "ai": "^7.0.2",
     "next": "16.1.6",
     "next-intl": "^4.9.0",
