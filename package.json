@@ -46,5 +46,6 @@
     "jest-environment-jsdom": "^30.3.0",
     "tailwindcss": "^4",
     "typescript": "^5"
-  }
+  },
+  "license": "GPL-3.0-or-later"
 }
